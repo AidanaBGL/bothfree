@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Produce a self-contained server bundle (.next/standalone/server.js) for a
+  // small, reliable Railway/Docker image.
+  output: "standalone",
   // Security headers applied globally; invite routes add stricter ones in their handlers.
   async headers() {
     return [

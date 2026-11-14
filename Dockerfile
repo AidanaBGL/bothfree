@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+# Multi-stage build using Next.js standalone output.
 FROM node:20-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
@@ -16,9 +17,13 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+# Bind to all interfaces so Railway's proxy can reach the server.
+ENV HOSTNAME=0.0.0.0
+
+# Standalone output already contains a minimal node_modules and server.js.
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+CMD ["node", "server.js"]
