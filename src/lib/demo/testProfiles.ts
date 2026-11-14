@@ -1,4 +1,4 @@
-import type { DemoPlan, DateTag } from "./plans";
+import { BILL_OPTIONS, type DemoPlan, type DateTag } from "./plans";
 
 /**
  * 50 clearly-labelled TEST profiles (25 men, 25 women) that populate the
@@ -63,6 +63,7 @@ function buildTestProfiles(): DemoPlan[] {
       note: NOTES[activityId],
       likesYouBack: i % 5 === 0,
       lgbtqFriendly: i % 3 === 0,
+      billLabel: BILL_OPTIONS[i % BILL_OPTIONS.length].label,
     });
   }
   return out;

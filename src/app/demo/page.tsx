@@ -7,7 +7,7 @@ import { TimeSlotTable } from "@/components/TimeSlotTable";
 import { AreaMap } from "@/components/AreaMap";
 import { ACTIVITIES, AREAS, activityById, areaById } from "@/lib/reference/catalog";
 import { buildDateHelper } from "@/lib/dateideas/conversation";
-import { DEMO_PLANS, TEST_PROFILE, type DemoPlan, type DateTag } from "@/lib/demo/plans";
+import { DEMO_PLANS, TEST_PROFILE, BILL_OPTIONS, type DemoPlan, type DateTag } from "@/lib/demo/plans";
 import { TEST_PROFILES } from "@/lib/demo/testProfiles";
 import {
   COMFORTS,
@@ -26,6 +26,7 @@ import {
 import { dateOverlap, budgetOverlap, formatOverlap } from "@/lib/travel/overlap";
 import { INCOMING_REQUESTS, FRIEND_SUGGESTIONS, type Person } from "@/lib/demo/friends";
 import { SEED_CONVERSATIONS, CANNED_REPLIES, type Conversation } from "@/lib/demo/messages";
+import { supabaseConfigured, authSignUp, authVerify, authSignIn, authSignOut, authCurrentUser } from "@/lib/auth/actions";
 
 const SESSION_KEY = "bf-demo-session";
 type AccountKind = "jury" | "demo" | "registered";
@@ -65,6 +66,10 @@ export default function DemoPage() {
   const [suFriendly, setSuFriendly] = useState(false);
   const [suTerms, setSuTerms] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  // Email awaiting a verification code, and the code input.
+  const [pendingVerify, setPendingVerify] = useState<string | null>(null);
+  const [verifyCode, setVerifyCode] = useState("");
 
   // App state
   const [view, setView] = useState<View>("feed");
@@ -110,23 +115,41 @@ export default function DemoPage() {
   const [createTripOpen, setCreateTripOpen] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      if (raw) {
-        const s = JSON.parse(raw);
-        setSession({ name: s.name, email: s.email, kind: (s.kind as AccountKind) ?? "demo" });
+    let active = true;
+    (async () => {
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (raw) {
+          const s = JSON.parse(raw);
+          if (active) setSession({ name: s.name, email: s.email, kind: (s.kind as AccountKind) ?? "demo" });
+        } else if (supabaseConfigured()) {
+          // Restore a real signed-in Supabase user if there's no local session.
+          const u = await authCurrentUser();
+          if (active && u) setSession({ name: u.name, email: u.email, kind: "registered" });
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
-    }
-    setReady(true);
+      if (active) setReady(true);
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   function startSession(identity: typeof TEST_IDENTITY) {
     localStorage.setItem(SESSION_KEY, JSON.stringify(identity));
     setSession(identity);
   }
-  function signIn() {
+  async function signIn() {
+    setAuthError(null);
+    if (supabaseConfigured()) {
+      setAuthBusy(true);
+      const res = await authSignIn(email.trim(), password);
+      setAuthBusy(false);
+      if (res.error) return setAuthError(res.error);
+      return startSession({ name: res.name ?? email.split("@")[0], email: email.trim(), kind: "registered" });
+    }
     startSession({ name: TEST_IDENTITY.name, email: email.trim() || TEST_IDENTITY.email, kind: "registered" });
   }
   function enterJury() {
@@ -135,7 +158,7 @@ export default function DemoPage() {
   function enterDemoUser() {
     startSession({ name: TEST_PROFILE.name, email: "demo@bothfree.app", kind: "demo" });
   }
-  function signUp() {
+  async function signUp() {
     setAuthError(null);
     const name = suName.trim();
     if (name.length < 2) return setAuthError("Please enter your name.");
@@ -145,12 +168,41 @@ export default function DemoPage() {
     if (ageFromDob(suDob) < 18) return setAuthError("You must be 18 or older to join.");
     if (!suGender) return setAuthError("Please choose how you describe your gender.");
     if (!suTerms) return setAuthError("Please accept the terms to continue.");
+
+    if (supabaseConfigured()) {
+      setAuthBusy(true);
+      const res = await authSignUp({
+        email: suEmail.trim(),
+        password: suPassword,
+        name,
+        dob: suDob,
+        gender: suGender,
+        lgbtqFriendly: suFriendly,
+      });
+      setAuthBusy(false);
+      if (res.error) return setAuthError(res.error);
+      if (res.needsVerify) return setPendingVerify(suEmail.trim()); // show the code screen
+      return startSession({ name, email: suEmail.trim(), kind: "registered" });
+    }
     startSession({ name, email: suEmail.trim(), kind: "registered" });
   }
+
+  async function submitVerify() {
+    if (!pendingVerify) return;
+    setAuthError(null);
+    setAuthBusy(true);
+    const res = await authVerify(pendingVerify, verifyCode.trim());
+    setAuthBusy(false);
+    if (res.error) return setAuthError(res.error);
+    startSession({ name: suName.trim() || pendingVerify.split("@")[0], email: pendingVerify, kind: "registered" });
+  }
   function signOut() {
+    void authSignOut();
     localStorage.removeItem(SESSION_KEY);
     setSession(null);
     setView("feed");
+    setEntryScreen("home");
+    setPendingVerify(null);
   }
 
   function addNotif(n: Omit<Notif, "id">) {
@@ -168,6 +220,11 @@ export default function DemoPage() {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  }
+  function copyInvite(plan: DemoPlan) {
+    const url = `${typeof window !== "undefined" ? window.location.origin : ""}/invite/${plan.inviteToken}`;
+    navigator.clipboard?.writeText(url).catch(() => {});
+    addNotif({ emoji: "🔗", text: `Invite link copied: ${url}`, tone: "match" });
   }
   function joinPlan(plan: DemoPlan) {
     setRequested((prev) => new Set(prev).add(plan.id));
@@ -329,10 +386,30 @@ export default function DemoPage() {
             </div>
           ) : (
             <div className="authcard">
-              <button type="button" className="linkbtn" style={{ marginBottom: 12 }} onClick={() => setEntryScreen("home")}>
+              <button type="button" className="linkbtn" style={{ marginBottom: 12 }} onClick={() => { setEntryScreen("home"); setPendingVerify(null); }}>
                 ← Back
               </button>
-              <div className="authswitch">
+              {pendingVerify ? (
+                <form className="loginform" onSubmit={(e) => { e.preventDefault(); void submitVerify(); }}>
+                  <h2>Check your email</h2>
+                  <p className="sub">We sent a 6-digit code to {pendingVerify}.</p>
+                  {authError && <div className="autherror">{authError}</div>}
+                  <label className="field">
+                    <span>Verification code</span>
+                    <input className="custominput" inputMode="numeric" placeholder="123456" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} />
+                  </label>
+                  <button type="submit" className="continue" disabled={authBusy}>
+                    {authBusy ? "Verifying…" : "Verify →"}
+                  </button>
+                  <div className="hint">
+                    <button type="button" className="linkbtn" onClick={() => { setPendingVerify(null); setVerifyCode(""); setAuthError(null); }}>
+                      Use a different email
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div className="authswitch">
               <button className={authMode === "signin" ? "on" : ""} onClick={() => { setAuthMode("signin"); setAuthError(null); }}>
                 Sign in
               </button>
@@ -348,7 +425,7 @@ export default function DemoPage() {
                 className="loginform"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  signIn();
+                  void signIn();
                 }}
               >
                 <label className="field">
@@ -359,8 +436,8 @@ export default function DemoPage() {
                   <span>Password</span>
                   <input type="password" className="custominput" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
                 </label>
-                <button type="submit" className="continue">
-                  Log in →
+                <button type="submit" className="continue" disabled={authBusy}>
+                  {authBusy ? "Signing in…" : "Log in →"}
                 </button>
                 <div className="hint">
                   New here?{" "}
@@ -374,7 +451,7 @@ export default function DemoPage() {
                 className="loginform"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  signUp();
+                  void signUp();
                 }}
               >
                 <label className="field">
@@ -414,8 +491,8 @@ export default function DemoPage() {
                   <input type="checkbox" checked={suTerms} onChange={(e) => setSuTerms(e.target.checked)} />
                   <span>I’m 18 or older and agree to the Terms & Privacy Policy.</span>
                 </label>
-                <button type="submit" className="continue">
-                  Create account →
+                <button type="submit" className="continue" disabled={authBusy}>
+                  {authBusy ? "Creating…" : "Create account →"}
                 </button>
                 <div className="hint">
                   Already have an account?{" "}
@@ -425,6 +502,8 @@ export default function DemoPage() {
                 </div>
               </form>
             )}
+                </>
+              )}
             </div>
           )}
         </main>
@@ -566,6 +645,7 @@ export default function DemoPage() {
                   onJoin={() => joinPlan(p)}
                   onToggleHelper={() => setHelperFor(helperFor === p.id ? null : p.id)}
                   onUpgrade={() => setPremium(true)}
+                  onCopyInvite={() => copyInvite(p)}
                 />
               ))}
               {visiblePlans.length === 0 && (
@@ -805,7 +885,7 @@ export default function DemoPage() {
                 </div>
               )}
               {myPlans.map((p) => (
-                <PlanCard key={p.id} plan={p} premium={premium} liked={false} requested mine onLike={() => {}} onPass={() => {}} onJoin={() => {}} helperOpen={false} onToggleHelper={() => {}} onUpgrade={() => {}} />
+                <PlanCard key={p.id} plan={p} premium={premium} liked={false} requested mine onLike={() => {}} onPass={() => {}} onJoin={() => {}} helperOpen={false} onToggleHelper={() => {}} onUpgrade={() => {}} onCopyInvite={() => copyInvite(p)} />
               ))}
             </div>
           </>
@@ -817,11 +897,19 @@ export default function DemoPage() {
       {createOpen && (
         <CreatePlanModal
           onClose={() => setCreateOpen(false)}
+          onTravel={() => {
+            setCreateOpen(false);
+            setCreateTripOpen(true);
+          }}
           onPost={(plan) => {
             setMyPlans((prev) => [plan, ...prev]);
             setCreateOpen(false);
             setView("plans");
-            addNotif({ emoji: "✅", text: "Your plan is live. People who fit can now ask to join.", tone: "match" });
+            if (plan.mode === "invite" && plan.inviteToken) {
+              addNotif({ emoji: "🔗", text: "Invite plan created — open it in My plans to copy the share link.", tone: "match" });
+            } else {
+              addNotif({ emoji: "✅", text: "Your plan is live. People who fit can now ask to join.", tone: "match" });
+            }
           }}
         />
       )}
@@ -855,8 +943,9 @@ function PlanCard(props: {
   onJoin: () => void;
   onToggleHelper: () => void;
   onUpgrade: () => void;
+  onCopyInvite?: () => void;
 }) {
-  const { plan, premium, liked, requested, mine, helperOpen, onLike, onPass, onJoin, onToggleHelper, onUpgrade } = props;
+  const { plan, premium, liked, requested, mine, helperOpen, onLike, onPass, onJoin, onToggleHelper, onUpgrade, onCopyInvite } = props;
   const activity = activityById(plan.activityId);
   const area = areaById(plan.areaId);
 
@@ -880,8 +969,12 @@ function PlanCard(props: {
       </div>
 
       <p className="pcard-bio">{plan.note}</p>
-      <div className="avail">💸 {plan.budgetLabel}</div>
+      <div className="avail">
+        💸 {plan.budgetLabel}
+        {plan.billLabel && ` · 💳 ${plan.billLabel}`}
+      </div>
       <div className="badgerow">
+        {plan.groupSize && plan.groupSize > 1 && <span className="eventbadge">👥 Group of {plan.groupSize}</span>}
         {plan.lgbtqFriendly && <span className="rainbowbadge">🏳️‍🌈 LGBTQ+ friendly</span>}
         {premium && !mine && plan.likesYouBack && <span className="likesyou">♥ Likes you back</span>}
       </div>
@@ -917,6 +1010,17 @@ function PlanCard(props: {
                 </button>
               </div>
             ))}
+        </>
+      )}
+
+      {mine && plan.mode === "invite" && plan.inviteToken && onCopyInvite && (
+        <>
+          <div className="invitebox">
+            🔗 <span>/invite/{plan.inviteToken}</span>
+          </div>
+          <button className="helperbtn" onClick={onCopyInvite}>
+            Copy invite link
+          </button>
         </>
       )}
     </article>
@@ -1041,30 +1145,35 @@ const CREATE_MODES: { id: Mode; emoji: string; title: string; desc: string }[] =
   { id: "dating", emoji: "💚", title: "Find a date", desc: "Meet someone new for a date." },
 ];
 
-const CREATE_STEPS = 6;
-
-function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (plan: DemoPlan) => void }) {
+function CreatePlanModal({ onClose, onPost, onTravel }: { onClose: () => void; onPost: (plan: DemoPlan) => void; onTravel: () => void }) {
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<Mode | "">("");
+  const [groupSize, setGroupSize] = useState(1);
   const [activity, setActivity] = useState("");
   const [area, setArea] = useState("");
   const [customRing, setCustomRing] = useState<[number, number][] | null>(null);
   const [days, setDays] = useState<string[]>([]);
   const [slots, setSlots] = useState<Record<string, number[]>>({});
   const [budget, setBudget] = useState(40);
+  const [bill, setBill] = useState("own");
   const [note, setNote] = useState("");
 
   const hasSlot = Object.values(slots).some((hrs) => hrs.length > 0);
   const effectiveArea = customRing ? "custom" : area;
 
-  // Whether the current step is complete enough to advance.
+  // "Find a new friend" inserts a group-size step right after the mode step.
+  const stepKeys = ["mode", ...(mode === "friendship" ? ["groupSize"] : []), "activity", "days", "times", "area", "budget"];
+  const totalSteps = stepKeys.length;
+  const current = stepKeys[Math.min(step, totalSteps - 1)];
+
   const stepValid =
-    (step === 0 && !!mode) ||
-    (step === 1 && !!activity) ||
-    (step === 2 && days.length > 0) ||
-    (step === 3 && hasSlot) ||
-    (step === 4 && !!effectiveArea) ||
-    step === 5;
+    (current === "mode" && !!mode) ||
+    current === "groupSize" ||
+    (current === "activity" && !!activity) ||
+    (current === "days" && days.length > 0) ||
+    (current === "times" && hasSlot) ||
+    (current === "area" && !!effectiveArea) ||
+    current === "budget";
 
   function post() {
     const dayWithSlot = days.filter((d) => (slots[d] ?? []).length > 0).sort()[0];
@@ -1086,6 +1195,10 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
       dateTag,
       whenLabel,
       budgetLabel,
+      billLabel: BILL_OPTIONS.find((b) => b.id === bill)?.label,
+      groupSize: mode === "friendship" ? groupSize : undefined,
+      mode: mode || undefined,
+      inviteToken: mode === "invite" ? Math.random().toString(36).slice(2, 10) : undefined,
       note:
         note.trim() ||
         `${activityById(activity)?.label} in ${customRing ? "a custom area" : areaById(area)?.label}. Come say hi!`,
@@ -1094,7 +1207,7 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
   }
 
   function advance() {
-    if (step < CREATE_STEPS - 1) setStep(step + 1);
+    if (step < totalSteps - 1) setStep(step + 1);
     else post();
   }
 
@@ -1109,14 +1222,14 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
         </div>
 
         <div className="wizprog">
-          {Array.from({ length: CREATE_STEPS }, (_, i) => (
+          {Array.from({ length: totalSteps }, (_, i) => (
             <span key={i} className={i <= step ? "on" : ""} />
           ))}
         </div>
 
         <div className="modal-body">
-          <div className="step wizstep" key={step}>
-            {step === 0 && (
+          <div className="step wizstep" key={current}>
+            {current === "mode" && (
               <>
                 <h2>What kind of plan? ✨</h2>
                 <p className="sub">Friend and date are always kept separate.</p>
@@ -1132,7 +1245,26 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
               </>
             )}
 
-            {step === 1 && (
+            {current === "groupSize" && (
+              <>
+                <h2>How many people? 👥</h2>
+                <p className="sub">Looking for just one person, or a small group?</p>
+                <div className="counter">
+                  <button type="button" className="counterbtn" onClick={() => setGroupSize((n) => Math.max(1, n - 1))} disabled={groupSize <= 1} aria-label="Fewer">
+                    −
+                  </button>
+                  <div className="counterval">
+                    <strong>{groupSize}</strong>
+                    <small>{groupSize === 1 ? "just one person" : `${groupSize} people`}</small>
+                  </div>
+                  <button type="button" className="counterbtn" onClick={() => setGroupSize((n) => Math.min(8, n + 1))} disabled={groupSize >= 8} aria-label="More">
+                    +
+                  </button>
+                </div>
+              </>
+            )}
+
+            {current === "activity" && (
               <>
                 <h2>What do you want to do? 🎈</h2>
                 <p className="sub">Pick the activity for your plan.</p>
@@ -1143,10 +1275,13 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
                     </button>
                   ))}
                 </div>
+                <button type="button" className="helperbtn" style={{ marginTop: 14 }} onClick={onTravel}>
+                  ✈️ Travel Together — plan a trip instead
+                </button>
               </>
             )}
 
-            {step === 2 && (
+            {current === "days" && (
               <>
                 <h2>When are you free? 📅</h2>
                 <p className="sub">Pick the days that work — single days or a range.</p>
@@ -1154,7 +1289,7 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
               </>
             )}
 
-            {step === 3 && (
+            {current === "times" && (
               <>
                 <h2>What times on those days? ⏰</h2>
                 <p className="sub">Tap the hours you’re free for each day.</p>
@@ -1162,7 +1297,7 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
               </>
             )}
 
-            {step === 4 && (
+            {current === "area" && (
               <>
                 <h2>Where should it be? 📍</h2>
                 <p className="sub">Pick an area, or draw your exact spot on the map.</p>
@@ -1184,7 +1319,7 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
               </>
             )}
 
-            {step === 5 && (
+            {current === "budget" && (
               <>
                 <h2>Set your budget 💸</h2>
                 <p className="sub">Great plans don’t need to cost a fortune.</p>
@@ -1193,6 +1328,14 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
                 <div className="range">
                   <span>$0</span>
                   <span>$200+</span>
+                </div>
+                <div className="sectionlabel">Who pays?</div>
+                <div className="pickrow">
+                  {BILL_OPTIONS.map((b) => (
+                    <button key={b.id} className={`chip${bill === b.id ? " sel" : ""}`} onClick={() => setBill(b.id)}>
+                      {b.emoji} {b.label}
+                    </button>
+                  ))}
                 </div>
                 <div className="sectionlabel">A note (optional)</div>
                 <textarea
@@ -1212,7 +1355,7 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
             {step === 0 ? "Cancel" : "← Back"}
           </button>
           <button className="continue" style={{ width: "auto", padding: "14px 26px" }} disabled={!stepValid} onClick={advance}>
-            {step === CREATE_STEPS - 1 ? "Post plan ✨" : "Continue →"}
+            {step === totalSteps - 1 ? "Post plan ✨" : "Continue →"}
           </button>
         </div>
       </div>

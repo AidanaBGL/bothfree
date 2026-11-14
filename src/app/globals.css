@@ -1894,3 +1894,68 @@ nav a:hover {
     place-items: center;
   }
 }
+
+/* ---- +/- counter (group size) ---- */
+.counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 18px 0 6px;
+}
+.counterbtn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  transition: 0.15s;
+}
+.counterbtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.counterbtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.counterval {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+}
+.counterval strong {
+  font-size: 46px;
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1;
+}
+.counterval small {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ---- Invite link box ---- */
+.invitebox {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-soft);
+  border: 1px solid #d3e2d6;
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 13px;
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.invitebox span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

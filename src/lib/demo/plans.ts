@@ -33,6 +33,14 @@ export const TEST_PROFILE: UserProfile = {
 
 export type DateTag = "weekday" | "weekend";
 
+/** Who covers the bill for a meet-up. */
+export const BILL_OPTIONS: { id: string; emoji: string; label: string }[] = [
+  { id: "own", emoji: "🧾", label: "Each pays own" },
+  { id: "split", emoji: "➗", label: "Split 50/50" },
+  { id: "treat", emoji: "🎁", label: "I'll treat" },
+  { id: "discuss", emoji: "💬", label: "Let's discuss" },
+];
+
 export interface DemoPlan {
   id: string;
   name: string;
@@ -49,6 +57,14 @@ export interface DemoPlan {
   likesYouBack: boolean;
   /** Opt-in, positive "welcoming space" signal shown as a badge. */
   lgbtqFriendly?: boolean;
+  /** Who covers the bill, e.g. "Split 50/50". */
+  billLabel?: string;
+  /** For "find a friend" plans: how many people are wanted (1 = one person). */
+  groupSize?: number;
+  /** Which scenario created this plan. */
+  mode?: "invite" | "friendship" | "dating";
+  /** Share token for "invite someone" plans. */
+  inviteToken?: string;
 }
 
 export const DEMO_PLANS: DemoPlan[] = [
