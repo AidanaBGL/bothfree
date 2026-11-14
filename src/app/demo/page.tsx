@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { MonthCalendar } from "@/components/MonthCalendar";
 import { TimeSlotTable } from "@/components/TimeSlotTable";
+import { AreaMap } from "@/components/AreaMap";
 import { ACTIVITIES, AREAS, activityById, areaById } from "@/lib/reference/catalog";
 import { buildDateHelper } from "@/lib/dateideas/conversation";
 import { DEMO_PLANS, TEST_PROFILE, type DemoPlan, type DateTag } from "@/lib/demo/plans";
@@ -24,9 +25,18 @@ export default function DemoPage() {
   const [session, setSession] = useState<typeof TEST_IDENTITY | null>(null);
   const [ready, setReady] = useState(false);
 
-  // Login fields, pre-filled with demo credentials.
+  // Auth: sign-in fields pre-filled with demo credentials.
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState(TEST_IDENTITY.email);
   const [password, setPassword] = useState("bothfree-demo");
+  // Sign-up fields.
+  const [suName, setSuName] = useState("");
+  const [suEmail, setSuEmail] = useState("");
+  const [suPassword, setSuPassword] = useState("");
+  const [suDob, setSuDob] = useState("");
+  const [suGender, setSuGender] = useState("");
+  const [suTerms, setSuTerms] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // App state
   const [view, setView] = useState<View>("feed");
@@ -62,10 +72,24 @@ export default function DemoPage() {
     setReady(true);
   }, []);
 
-  function signIn() {
-    const identity = { name: TEST_IDENTITY.name, email: email.trim() || TEST_IDENTITY.email };
+  function startSession(identity: typeof TEST_IDENTITY) {
     localStorage.setItem(SESSION_KEY, JSON.stringify(identity));
     setSession(identity);
+  }
+  function signIn() {
+    startSession({ name: TEST_IDENTITY.name, email: email.trim() || TEST_IDENTITY.email });
+  }
+  function signUp() {
+    setAuthError(null);
+    const name = suName.trim();
+    if (name.length < 2) return setAuthError("Please enter your name.");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(suEmail.trim())) return setAuthError("Please enter a valid email.");
+    if (suPassword.length < 6) return setAuthError("Password must be at least 6 characters.");
+    if (!suDob) return setAuthError("Please enter your date of birth.");
+    if (ageFromDob(suDob) < 18) return setAuthError("You must be 18 or older to join.");
+    if (!suGender) return setAuthError("Please choose how you describe your gender.");
+    if (!suTerms) return setAuthError("Please accept the terms to continue.");
+    startSession({ name, email: suEmail.trim() });
   }
   function signOut() {
     localStorage.removeItem(SESSION_KEY);
@@ -135,42 +159,95 @@ export default function DemoPage() {
         </aside>
         <main className="authmain">
           <div className="authcard">
-            <h2>Sign in</h2>
-            <p className="sub">Enter your details to continue.</p>
-            <form
-              className="loginform"
-              onSubmit={(e) => {
-                e.preventDefault();
-                signIn();
-              }}
-            >
-              <label className="field">
-                <span>Email</span>
-                <input
-                  type="email"
-                  className="custominput"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
-                />
-              </label>
-              <label className="field">
-                <span>Password</span>
-                <input
-                  type="password"
-                  className="custominput"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                />
-              </label>
-              <button type="submit" className="continue">
-                Log in →
+            <div className="authswitch">
+              <button className={authMode === "signin" ? "on" : ""} onClick={() => { setAuthMode("signin"); setAuthError(null); }}>
+                Sign in
               </button>
-              <div className="hint">New here? Create an account</div>
-            </form>
+              <button className={authMode === "signup" ? "on" : ""} onClick={() => { setAuthMode("signup"); setAuthError(null); }}>
+                Create account
+              </button>
+            </div>
+
+            {authError && <div className="autherror">{authError}</div>}
+
+            {authMode === "signin" ? (
+              <form
+                className="loginform"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  signIn();
+                }}
+              >
+                <label className="field">
+                  <span>Email</span>
+                  <input type="email" className="custominput" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+                </label>
+                <label className="field">
+                  <span>Password</span>
+                  <input type="password" className="custominput" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+                </label>
+                <button type="submit" className="continue">
+                  Log in →
+                </button>
+                <div className="hint">
+                  New here?{" "}
+                  <button type="button" className="linkbtn" onClick={() => { setAuthMode("signup"); setAuthError(null); }}>
+                    Create an account
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form
+                className="loginform"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  signUp();
+                }}
+              >
+                <label className="field">
+                  <span>Name</span>
+                  <input className="custominput" placeholder="How should we call you?" value={suName} onChange={(e) => setSuName(e.target.value)} autoComplete="name" />
+                </label>
+                <label className="field">
+                  <span>Email</span>
+                  <input type="email" className="custominput" placeholder="you@example.com" value={suEmail} onChange={(e) => setSuEmail(e.target.value)} autoComplete="email" />
+                </label>
+                <div className="twocol">
+                  <label className="field">
+                    <span>Password</span>
+                    <input type="password" className="custominput" placeholder="At least 6 characters" value={suPassword} onChange={(e) => setSuPassword(e.target.value)} autoComplete="new-password" />
+                  </label>
+                  <label className="field">
+                    <span>Date of birth</span>
+                    <input type="date" className="custominput" value={suDob} onChange={(e) => setSuDob(e.target.value)} />
+                  </label>
+                </div>
+                <label className="field">
+                  <span>How do you describe your gender?</span>
+                  <select className="custominput" value={suGender} onChange={(e) => setSuGender(e.target.value)}>
+                    <option value="">Select…</option>
+                    <option value="woman">Woman</option>
+                    <option value="man">Man</option>
+                    <option value="nonbinary">Non-binary</option>
+                    <option value="self">Prefer to self-describe</option>
+                    <option value="prefer_not">Prefer not to say</option>
+                  </select>
+                </label>
+                <label className="check">
+                  <input type="checkbox" checked={suTerms} onChange={(e) => setSuTerms(e.target.checked)} />
+                  <span>I’m 18 or older and agree to the Terms & Privacy Policy.</span>
+                </label>
+                <button type="submit" className="continue">
+                  Create account →
+                </button>
+                <div className="hint">
+                  Already have an account?{" "}
+                  <button type="button" className="linkbtn" onClick={() => { setAuthMode("signin"); setAuthError(null); }}>
+                    Sign in
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </main>
       </div>
@@ -336,7 +413,7 @@ export default function DemoPage() {
           </>
         )}
 
-        {view === "profile" && <ProfileView />}
+        {view === "profile" && <ProfileView session={session} />}
       </main>
 
       {createOpen && (
@@ -384,7 +461,7 @@ function PlanCard(props: {
             {mine && <span className="minetag"> · you</span>}
           </strong>
           <span className="pcard-area">
-            📍 {area?.label ?? plan.areaId} · 🗓️ {plan.whenLabel}
+            📍 {plan.areaLabel ?? area?.label ?? plan.areaId} · 🗓️ {plan.whenLabel}
           </span>
         </div>
         <span className="eventbadge">
@@ -474,8 +551,9 @@ function HelperPanel({ plan }: { plan: DemoPlan }) {
 
 /* ---------------- Profile ---------------- */
 
-function ProfileView() {
+function ProfileView({ session }: { session: typeof TEST_IDENTITY }) {
   const p = TEST_PROFILE;
+  const name = session.name || p.name;
   return (
     <>
       <div className="contenthead">
@@ -486,7 +564,7 @@ function ProfileView() {
           <div className="avatar big">{p.emoji}</div>
           <div>
             <h2 className="profilename">
-              {p.name}, {p.age}
+              {name}, {p.age}
             </h2>
             <div className="pcard-area">📍 {p.city} · {areaById(p.areaId)?.label}</div>
           </div>
@@ -512,7 +590,7 @@ function ProfileView() {
           </div>
           <div className="summaryline">
             <span>Email</span>
-            <b>{TEST_IDENTITY.email}</b>
+            <b>{session.email}</b>
           </div>
         </div>
       </div>
@@ -521,6 +599,16 @@ function ProfileView() {
 }
 
 /* ---------------- Create plan modal ---------------- */
+
+function ageFromDob(dob: string): number {
+  const d = new Date(`${dob}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return 0;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age;
+}
 
 const HOUR_LABELS: Record<number, string> = {};
 for (let h = 0; h < 24; h++) {
@@ -532,13 +620,16 @@ for (let h = 0; h < 24; h++) {
 function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (plan: DemoPlan) => void }) {
   const [activity, setActivity] = useState("");
   const [area, setArea] = useState("");
+  const [customRing, setCustomRing] = useState<[number, number][] | null>(null);
   const [days, setDays] = useState<string[]>([]);
   const [slots, setSlots] = useState<Record<string, number[]>>({});
   const [budget, setBudget] = useState(40);
   const [note, setNote] = useState("");
 
   const hasSlot = Object.values(slots).some((hrs) => hrs.length > 0);
-  const canPost = !!activity && !!area && days.length > 0 && hasSlot;
+  // A drawn area takes precedence over a preset chip.
+  const effectiveArea = customRing ? "custom" : area;
+  const canPost = !!activity && !!effectiveArea && days.length > 0 && hasSlot;
 
   function post() {
     // Earliest selected day that has a slot, and its earliest hour.
@@ -556,11 +647,14 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
       emoji: TEST_PROFILE.emoji,
       age: TEST_PROFILE.age,
       activityId: activity,
-      areaId: area,
+      areaId: effectiveArea,
+      areaLabel: customRing ? "Custom area" : areaById(area)?.label,
       dateTag,
       whenLabel,
       budgetLabel,
-      note: note.trim() || `${activityById(activity)?.label} in ${areaById(area)?.label}. Come say hi!`,
+      note:
+        note.trim() ||
+        `${activityById(activity)?.label} in ${customRing ? "a custom area" : areaById(area)?.label}. Come say hi!`,
       likesYouBack: false,
     });
   }
@@ -584,15 +678,24 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
             ))}
           </div>
 
-          <div className="sectionlabel">Where?</div>
+          <div className="sectionlabel">Where? Pick an area…</div>
           <div className="pickrow">
             {AREAS.filter((a) => a.id !== "anywhere").map((a) => (
-              <button key={a.id} className={`chip${area === a.id ? " sel" : ""}`} onClick={() => setArea(a.id)}>
+              <button
+                key={a.id}
+                className={`chip${!customRing && area === a.id ? " sel" : ""}`}
+                onClick={() => setArea(a.id)}
+                disabled={!!customRing}
+              >
                 {a.emoji} {a.label}
               </button>
             ))}
           </div>
-          <div className="drawhint">🗺️ Draw your own area on the map — coming next.</div>
+          <div className="sectionlabel">…or draw your exact area on the map</div>
+          <AreaMap onChange={setCustomRing} />
+          {customRing && (
+            <div className="drawhint">✅ Using your drawn area. Clear the map to pick a preset instead.</div>
+          )}
 
           <div className="sectionlabel">Which days?</div>
           <MonthCalendar selected={days} onChange={setDays} />

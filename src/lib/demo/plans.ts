@@ -37,6 +37,8 @@ export interface DemoPlan {
   age: number;
   activityId: string;
   areaId: string;
+  /** Display label; set for custom drawn areas that have no catalog id. */
+  areaLabel?: string;
   dateTag: DateTag;
   whenLabel: string;
   budgetLabel: string;

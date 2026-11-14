@@ -1,57 +1,52 @@
 /* ============================================================
-   BothFree design system — dark navy + glassmorphism.
-   Laconic, solid, translucent frosted panels over a deep navy.
+   BothFree design system — light, airy, violet accent (Inter).
+   Palette adapted from the BothFree/ prototype the team liked.
    Markup/classes are unchanged; this file restyles the whole app.
    ============================================================ */
 
 :root {
-  --bg: #070b16;
-  --ink: #eaeefb;
-  --muted: #94a1c2;
-  --faint: #6b7694;
+  --bg: #f5f6fb;
+  --ink: #202438;
+  --muted: #7b8194;
+  --faint: #a0a4b4;
 
-  --accent: #5e8bff;
-  --accent-2: #8fb4ff;
-  --gold: #e6b865;
-  --pink: #ff6f9c;
-  --green: #3fd98b;
-  --danger: #ff6b5e;
+  --accent: #7255ec;
+  --accent-2: #8f79f4;
+  --accent-soft: #f0ecff;
+  --pink: #fa658d;
+  --green: #22af80;
+  --gold: #dd9b3e;
 
-  /* Glass */
-  --panel: rgba(255, 255, 255, 0.045);
-  --panel-2: rgba(255, 255, 255, 0.07);
-  --panel-strong: rgba(14, 21, 40, 0.82);
-  --border: rgba(255, 255, 255, 0.1);
-  --border-2: rgba(255, 255, 255, 0.16);
-  --blur: saturate(150%) blur(18px);
-  --shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
-  --radius: 22px;
+  --panel: #ffffff;
+  --panel-2: #f6f6fb;
+  --line: #e7e8f0;
+  --line-2: #dedbef;
+
+  --shadow: 0 16px 42px rgba(36, 39, 77, 0.08);
+  --shadow-soft: 0 6px 18px rgba(36, 39, 77, 0.06);
+  --radius: 20px;
 }
 
 * {
   box-sizing: border-box;
 }
 
-html {
-  color-scheme: dark;
-}
-
 body {
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
-  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background:
-    radial-gradient(1100px 640px at 8% -12%, #1b2b57 0%, transparent 58%),
-    radial-gradient(1000px 720px at 112% 6%, #0f2f55 0%, transparent 52%),
-    radial-gradient(900px 900px at 50% 120%, #10183a 0%, transparent 60%),
+    radial-gradient(900px 500px at 100% -5%, #efeaff 0%, transparent 55%),
+    radial-gradient(700px 500px at -5% 105%, #e9f3ff 0%, transparent 55%),
     var(--bg);
   background-attachment: fixed;
 }
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 button {
@@ -60,9 +55,8 @@ button {
 a {
   color: inherit;
 }
-
 ::selection {
-  background: rgba(94, 139, 255, 0.35);
+  background: rgba(114, 85, 236, 0.2);
 }
 
 /* ---- Header ---- */
@@ -77,14 +71,14 @@ header {
 }
 .logo {
   font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -1.1px;
+  font-weight: 900;
+  letter-spacing: -1.3px;
 }
 .logo span.g {
   color: var(--accent);
 }
 .logo span.dot {
-  color: var(--gold);
+  color: var(--pink);
 }
 nav {
   display: flex;
@@ -102,22 +96,21 @@ nav a:hover {
   color: var(--ink);
 }
 .navbtn {
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--line);
   border-radius: 30px;
   padding: 10px 18px;
-  background: var(--panel-2);
-  backdrop-filter: var(--blur);
+  background: var(--panel);
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 13px;
   text-decoration: none;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.2s;
 }
 .navbtn:hover {
   border-color: var(--accent);
 }
 
-/* ---- Two-column shell (landing / wizard) ---- */
+/* ---- Two-column shell (landing) ---- */
 .shell {
   max-width: 1150px;
   margin: 25px auto 60px;
@@ -131,18 +124,18 @@ nav a:hover {
   padding: 50px 0;
 }
 .eyebrow {
-  color: var(--accent-2);
+  color: var(--accent);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 2.4px;
+  letter-spacing: 1.8px;
   text-transform: uppercase;
 }
 .aside h1 {
   font-size: clamp(38px, 4.4vw, 56px);
   line-height: 1.07;
-  letter-spacing: -2.4px;
-  margin: 20px 0;
-  font-weight: 800;
+  letter-spacing: -2.2px;
+  margin: 18px 0;
+  font-weight: 900;
 }
 .aside h1 em {
   font-style: normal;
@@ -150,47 +143,38 @@ nav a:hover {
 }
 .aside p {
   color: var(--muted);
-  line-height: 1.75;
+  line-height: 1.7;
   font-size: 15px;
   max-width: 310px;
 }
 .cta {
   display: inline-block;
-  margin-top: 28px;
+  margin-top: 26px;
   border: 0;
-  border-radius: 14px;
-  padding: 15px 28px;
-  color: #06122e;
+  border-radius: 13px;
+  padding: 14px 26px;
+  color: #fff;
   font-weight: 800;
   text-decoration: none;
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
-  box-shadow: 0 10px 30px rgba(94, 139, 255, 0.35);
-  transition: transform 0.2s, box-shadow 0.2s;
+  background: var(--accent);
+  box-shadow: 0 8px 20px rgba(114, 85, 236, 0.28);
+  transition: transform 0.2s, filter 0.2s;
 }
 .cta:hover {
   transform: translateY(-2px);
-  box-shadow: 0 14px 38px rgba(94, 139, 255, 0.45);
+  filter: brightness(0.97);
 }
 
-/* ---- Glass app panel ---- */
+/* ---- Card panel ---- */
 .app {
   background: var(--panel);
-  border: 1px solid var(--border);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--line);
   box-shadow: var(--shadow);
-  border-radius: 30px;
-  min-height: 660px;
+  border-radius: 24px;
+  min-height: 640px;
   padding: 34px 44px 30px;
   position: relative;
   overflow: hidden;
-}
-.app::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
 }
 .top {
   display: flex;
@@ -199,17 +183,19 @@ nav a:hover {
   margin-bottom: 24px;
 }
 .pill {
-  background: rgba(94, 139, 255, 0.14);
-  color: var(--accent-2);
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
   padding: 8px 13px;
-  border-radius: 20px;
+  border-radius: 99px;
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.4px;
-  border: 1px solid rgba(94, 139, 255, 0.25);
+  letter-spacing: 0.3px;
 }
 .back {
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   background: var(--panel-2);
   width: 36px;
   height: 36px;
@@ -223,16 +209,16 @@ nav a:hover {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 7px;
-  margin-bottom: 36px;
+  margin-bottom: 34px;
 }
 .progress div {
   height: 5px;
-  background: rgba(255, 255, 255, 0.09);
+  background: #e9e8f1;
   border-radius: 20px;
   transition: background 0.4s;
 }
 .progress .on {
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background: var(--accent);
 }
 
 /* ---- Steps & headings ---- */
@@ -249,7 +235,7 @@ nav a:hover {
   margin: 0 0 26px;
 }
 .sectionlabel {
-  font-weight: 700;
+  font-weight: 750;
   font-size: 13px;
   margin: 20px 0 10px;
   color: var(--ink);
@@ -262,10 +248,10 @@ nav a:hover {
   gap: 13px;
 }
 .choice {
-  min-height: 132px;
-  border: 1px solid var(--border);
+  min-height: 130px;
+  border: 1px solid var(--line);
   border-radius: 18px;
-  background: var(--panel-2);
+  background: var(--panel);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -274,16 +260,17 @@ nav a:hover {
   gap: 8px;
   text-align: left;
   color: var(--ink);
-  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
 .choice:hover {
-  transform: translateY(-3px);
-  border-color: var(--border-2);
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(114, 85, 236, 0.07);
 }
 .choice.sel {
   border-color: var(--accent);
-  background: rgba(94, 139, 255, 0.12);
-  box-shadow: 0 0 0 3px rgba(94, 139, 255, 0.15);
+  box-shadow: 0 0 0 3px rgba(114, 85, 236, 0.1);
+  background: var(--accent-soft);
 }
 .choice .emoji {
   font-size: 30px;
@@ -297,29 +284,33 @@ nav a:hover {
   line-height: 1.45;
 }
 
-/* ---- Time chips ---- */
+/* ---- Chips ---- */
 .times {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
 .chip {
-  padding: 13px 8px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--muted);
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  color: #555d71;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   transition: 0.2s;
 }
 .chip.sel {
-  background: rgba(94, 139, 255, 0.14);
+  background: var(--accent);
   border-color: var(--accent);
-  color: var(--ink);
+  color: #fff;
+}
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-/* ---- Login form ---- */
+/* ---- Login / form fields ---- */
 .loginform {
   display: flex;
   flex-direction: column;
@@ -333,23 +324,23 @@ nav a:hover {
 }
 .field > span {
   font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
+  font-weight: 700;
+  color: var(--ink);
 }
 
-/* ---- Custom activity input ---- */
 .customrow {
   display: flex;
   gap: 8px;
 }
 .custominput {
   flex: 1;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 13px 15px;
+  background: var(--panel);
   color: var(--ink);
   outline: 0;
+  transition: border-color 0.2s;
 }
 .custominput::placeholder {
   color: var(--faint);
@@ -362,8 +353,8 @@ nav a:hover {
   border-radius: 12px;
   padding: 0 18px;
   font-weight: 800;
-  color: #06122e;
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  color: #fff;
+  background: var(--accent);
 }
 .addbtn:disabled {
   opacity: 0.4;
@@ -376,33 +367,33 @@ nav a:hover {
   margin-top: 12px;
 }
 .tag {
-  background: rgba(94, 139, 255, 0.12);
-  border: 1px solid rgba(94, 139, 255, 0.22);
-  color: var(--accent-2);
-  border-radius: 20px;
-  padding: 6px 12px;
+  background: var(--accent-soft);
+  border: 1px solid #e3dcff;
+  color: var(--accent);
+  border-radius: 99px;
+  padding: 7px 13px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
 }
 .tag.removable {
   cursor: pointer;
-  background: rgba(230, 184, 101, 0.12);
-  border-color: rgba(230, 184, 101, 0.3);
-  color: var(--gold);
+  background: #fff0f4;
+  border-color: #ffd4e0;
+  color: var(--pink);
 }
 
 /* ---- Budget ---- */
 .amount {
   text-align: center;
-  font-size: 54px;
-  font-weight: 800;
-  color: var(--accent-2);
-  margin: 26px 0 0;
+  font-size: 52px;
+  font-weight: 900;
+  color: var(--accent);
+  margin: 24px 0 0;
 }
 .slider {
   width: 100%;
   accent-color: var(--accent);
-  margin: 24px 0 5px;
+  margin: 22px 0 5px;
 }
 .range {
   display: flex;
@@ -411,10 +402,10 @@ nav a:hover {
   font-size: 12px;
 }
 
-/* ---- Summary / premium list ---- */
+/* ---- Summary list ---- */
 .summary {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: #f7f5ff;
+  border: 1px solid #eee9ff;
   border-radius: 18px;
   padding: 20px 22px;
   margin-top: 18px;
@@ -423,7 +414,7 @@ nav a:hover {
   display: flex;
   justify-content: space-between;
   padding: 12px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid #e9e5f7;
   font-size: 13px;
   gap: 12px;
 }
@@ -439,43 +430,55 @@ nav a:hover {
 
 /* ---- Notes ---- */
 .note {
-  background: rgba(230, 184, 101, 0.1);
-  border: 1px solid rgba(230, 184, 101, 0.22);
+  background: #fff6e8;
+  border: 1px solid #ffe6bf;
   border-radius: 13px;
   padding: 13px;
   font-size: 12px;
-  color: #e7cc99;
+  color: #8b6218;
   margin-top: 18px;
   line-height: 1.5;
 }
 
-/* ---- Footer button ---- */
+/* ---- Primary button ---- */
 .footer {
   margin-top: 26px;
 }
 .continue {
   width: 100%;
   border: 0;
-  border-radius: 15px;
-  padding: 16px;
-  color: #06122e;
+  border-radius: 13px;
+  padding: 15px;
+  color: #fff;
   font-weight: 800;
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
-  box-shadow: 0 10px 30px rgba(94, 139, 255, 0.32);
-  transition: transform 0.2s, opacity 0.2s;
+  background: var(--accent);
+  box-shadow: 0 8px 20px rgba(114, 85, 236, 0.26);
+  transition: transform 0.2s, opacity 0.2s, filter 0.2s;
 }
 .continue:hover {
   transform: translateY(-2px);
+  filter: brightness(0.97);
 }
 .continue:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
 }
 .hint {
   text-align: center;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 12px;
   margin-top: 12px;
+}
+.hint a,
+.linkbtn {
+  color: var(--accent);
+  font-weight: 700;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
 }
 .mascot {
   font-size: 70px;
@@ -489,8 +492,8 @@ nav a:hover {
    Month calendar
    ============================================================ */
 .cal {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 18px;
   padding: 16px;
   margin: 10px 0 6px;
@@ -506,7 +509,7 @@ nav a:hover {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   background: var(--panel-2);
   color: var(--ink);
   font-size: 18px;
@@ -525,17 +528,18 @@ nav a:hover {
 .cal-weekdays span {
   text-align: center;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 750;
   color: var(--faint);
   padding-bottom: 6px;
 }
 .cal-cell {
   aspect-ratio: 1 / 1;
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
   border-radius: 11px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--panel);
   font-size: 13px;
-  color: var(--ink);
+  color: #565b70;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -545,20 +549,24 @@ nav a:hover {
   background: transparent;
   border: 0;
 }
+.cal-cell:hover:not(:disabled) {
+  border-color: var(--accent);
+}
 .cal-cell:disabled {
   color: var(--faint);
   opacity: 0.4;
   cursor: not-allowed;
 }
 .cal-cell.sel {
-  background: rgba(94, 139, 255, 0.2);
+  background: var(--accent-soft);
   border-color: var(--accent);
-  color: #fff;
-  font-weight: 700;
+  color: var(--accent);
+  font-weight: 800;
 }
 .cal-cell.rangestart {
-  background: rgba(94, 139, 255, 0.35);
-  border-color: var(--accent-2);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 .cal-foot {
   display: flex;
@@ -568,18 +576,22 @@ nav a:hover {
   gap: 10px;
 }
 .rangebtn {
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 99px;
   padding: 8px 14px;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
+  font-weight: 700;
+  color: #555d71;
 }
 .rangebtn.on {
-  background: rgba(94, 139, 255, 0.16);
+  background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--ink);
+  color: var(--accent);
+}
+.rangebtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .cal-count {
   font-size: 12px;
@@ -614,11 +626,9 @@ nav a:hover {
 }
 .pcard {
   background: var(--panel);
-  border: 1px solid var(--border);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  border-radius: 22px;
-  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
   padding: 20px 22px;
 }
 .pcard-top {
@@ -627,14 +637,13 @@ nav a:hover {
   gap: 12px;
 }
 .avatar {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: rgba(94, 139, 255, 0.14);
-  border: 1px solid var(--border);
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  background: var(--accent-soft);
   display: grid;
   place-items: center;
-  font-size: 27px;
+  font-size: 28px;
 }
 .pcard-id {
   display: flex;
@@ -649,42 +658,38 @@ nav a:hover {
   color: var(--muted);
 }
 .fitbadge {
-  background: rgba(63, 217, 139, 0.14);
+  background: #e6f7f0;
   color: var(--green);
   font-size: 11px;
   font-weight: 800;
   padding: 6px 11px;
-  border-radius: 20px;
-  border: 1px solid rgba(63, 217, 139, 0.25);
+  border-radius: 99px;
   text-align: center;
 }
 .fitbadge.off {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--panel-2);
   color: var(--faint);
-  border-color: var(--border);
 }
 .pcard-bio {
   font-size: 14px;
-  color: var(--muted);
-  line-height: 1.5;
+  color: #51586b;
+  line-height: 1.55;
   margin: 14px 0 10px;
 }
 .avail {
   font-size: 13px;
   color: var(--ink);
-  font-weight: 500;
-  opacity: 0.85;
+  font-weight: 600;
 }
 .likesyou {
   display: inline-block;
   margin-top: 10px;
-  background: rgba(255, 111, 156, 0.14);
+  background: #fff0f4;
   color: var(--pink);
   font-size: 12px;
   font-weight: 800;
   padding: 5px 11px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 111, 156, 0.28);
+  border-radius: 99px;
 }
 .slots {
   display: flex;
@@ -693,8 +698,8 @@ nav a:hover {
   margin: 14px 0 4px;
 }
 .slot {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
   border-radius: 13px;
   padding: 11px 14px;
   display: flex;
@@ -717,34 +722,34 @@ nav a:hover {
 }
 .passbtn,
 .likebtn {
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 12px;
   padding: 12px;
-  font-weight: 600;
-  color: var(--muted);
+  font-weight: 700;
+  color: #5c6078;
   transition: 0.2s;
 }
 .passbtn:hover,
 .likebtn:hover {
+  border-color: var(--accent);
   color: var(--ink);
-  border-color: var(--border-2);
 }
 .likebtn.on {
-  background: rgba(255, 111, 156, 0.16);
-  border-color: rgba(255, 111, 156, 0.4);
+  background: #fff0f4;
+  border-color: #ffd4e0;
   color: var(--pink);
 }
 .matchbtn {
   border: 0;
-  border-radius: 13px;
+  border-radius: 12px;
   padding: 12px;
   font-weight: 800;
-  color: #06122e;
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  color: #fff;
+  background: var(--accent);
 }
 .matchbtn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -752,45 +757,45 @@ nav a:hover {
 .upsell {
   width: 100%;
   text-align: left;
-  border: 1px dashed rgba(230, 184, 101, 0.4);
-  background: rgba(230, 184, 101, 0.08);
-  color: var(--gold);
+  border: 1px solid #ffe6bf;
+  background: #fff6e8;
+  color: #8b6218;
   border-radius: 16px;
   padding: 14px 16px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 16px;
 }
 .helperbtn {
   width: 100%;
   margin-top: 12px;
-  border: 1px solid rgba(143, 180, 255, 0.3);
-  background: rgba(94, 139, 255, 0.1);
-  color: var(--accent-2);
-  border-radius: 13px;
+  border: 1px solid #e3dcff;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 12px;
   padding: 12px;
   font-weight: 800;
 }
 .locked {
   margin-top: 12px;
-  background: rgba(94, 139, 255, 0.08);
-  border: 1px solid var(--border);
+  background: var(--accent-soft);
+  border: 1px solid #e3dcff;
   border-radius: 16px;
   padding: 16px;
 }
 .locked strong {
-  color: var(--accent-2);
+  color: var(--accent);
 }
 .locked p {
   font-size: 13px;
-  color: var(--muted);
+  color: #5b5570;
   line-height: 1.5;
   margin: 8px 0 14px;
 }
 .helper {
   margin-top: 12px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid var(--border);
+  background: #faf9ff;
+  border: 1px solid #eee9ff;
   border-radius: 16px;
   padding: 16px 18px;
 }
@@ -800,7 +805,7 @@ nav a:hover {
 .helper-sec strong {
   display: block;
   font-size: 13px;
-  color: var(--accent-2);
+  color: var(--accent);
   margin-bottom: 6px;
 }
 .helper-sec ul {
@@ -809,21 +814,19 @@ nav a:hover {
 }
 .helper-sec li {
   font-size: 13px;
-  color: var(--ink);
-  opacity: 0.9;
+  color: #45485c;
   line-height: 1.6;
 }
 .helper-sec p {
   font-size: 13px;
-  color: var(--ink);
-  opacity: 0.9;
+  color: #45485c;
   line-height: 1.6;
   margin: 0;
 }
 .helper-foot {
   font-size: 11px;
   color: var(--faint);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid #eee9ff;
   padding-top: 10px;
 }
 
@@ -831,26 +834,25 @@ nav a:hover {
    Premium button + notifications
    ============================================================ */
 .premiumbtn {
-  border: 1px solid rgba(230, 184, 101, 0.4);
-  background: rgba(230, 184, 101, 0.1);
+  border: 1px solid #f0d8a8;
+  background: #fff6e6;
   color: var(--gold);
-  border-radius: 30px;
+  border-radius: 99px;
   padding: 10px 16px;
   font-size: 13px;
   font-weight: 800;
 }
 .premiumbtn.on {
-  background: linear-gradient(120deg, #e6b865, #f3d18a);
-  border-color: #e6b865;
-  color: #3a2a06;
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #fff;
 }
 .bellwrap {
   position: relative;
 }
 .bell {
-  border: 1px solid var(--border-2);
-  background: var(--panel-2);
-  backdrop-filter: var(--blur);
+  border: 1px solid var(--line);
+  background: var(--panel);
   border-radius: 50%;
   width: 42px;
   height: 42px;
@@ -862,7 +864,7 @@ nav a:hover {
   top: -4px;
   right: -4px;
   background: var(--pink);
-  color: #2a0714;
+  color: #fff;
   font-size: 11px;
   font-weight: 800;
   min-width: 18px;
@@ -877,10 +879,8 @@ nav a:hover {
   right: 0;
   top: 52px;
   width: 300px;
-  background: var(--panel-strong);
-  border: 1px solid var(--border-2);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 16px;
   box-shadow: var(--shadow);
   padding: 14px;
@@ -907,40 +907,19 @@ nav a:hover {
   margin-bottom: 6px;
 }
 .notifitem.match {
-  background: rgba(63, 217, 139, 0.12);
-  color: #a9f0cd;
+  background: #e6f7f0;
+  color: #15795a;
 }
 .notifitem.pending {
-  background: rgba(230, 184, 101, 0.1);
-  color: #e7cc99;
+  background: #fff6e8;
+  color: #8b6218;
 }
 .notifemoji {
   font-size: 18px;
 }
 
 /* ============================================================
-   Responsive
-   ============================================================ */
-@media (max-width: 850px) {
-  .shell {
-    grid-template-columns: 1fr;
-    gap: 6px;
-    max-width: 650px;
-  }
-  .aside {
-    padding: 14px 0 4px;
-  }
-  .app {
-    padding: 25px;
-    min-height: 600px;
-  }
-  nav a {
-    display: none;
-  }
-}
-
-/* ============================================================
-   Auth (login) split layout
+   Auth (login / register) split layout
    ============================================================ */
 .authwrap {
   display: grid;
@@ -953,27 +932,25 @@ nav a:hover {
   flex-direction: column;
   justify-content: space-between;
   gap: 24px;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--line);
   background: var(--panel);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
 }
 .brand {
   font-size: 25px;
-  font-weight: 800;
-  letter-spacing: -1.2px;
+  font-weight: 900;
+  letter-spacing: -1.3px;
 }
 .brand .g {
   color: var(--accent);
 }
 .brand .dot {
-  color: var(--gold);
+  color: var(--pink);
 }
 .authpitch h1 {
   font-size: clamp(32px, 3.4vw, 46px);
   line-height: 1.08;
   letter-spacing: -2px;
-  font-weight: 800;
+  font-weight: 900;
   margin: 16px 0 14px;
 }
 .authpitch h1 em {
@@ -996,19 +973,67 @@ nav a:hover {
 }
 .authcard {
   width: 100%;
-  max-width: 420px;
+  max-width: 430px;
   background: var(--panel);
-  border: 1px solid var(--border);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  border-radius: 24px;
-  padding: 34px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 32px;
   box-shadow: var(--shadow);
 }
 .authcard h2 {
   font-size: 26px;
   font-weight: 800;
   margin: 0 0 6px;
+}
+.authswitch {
+  display: flex;
+  background: var(--panel-2);
+  padding: 5px;
+  border-radius: 13px;
+  gap: 5px;
+  margin: 2px 0 18px;
+}
+.authswitch button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--muted);
+}
+.authswitch button.on {
+  background: var(--panel);
+  color: var(--accent);
+  box-shadow: 0 2px 6px rgba(36, 39, 77, 0.08);
+}
+.autherror {
+  background: #fdecee;
+  border: 1px solid #f7cdd3;
+  color: #c0334a;
+  border-radius: 12px;
+  padding: 11px 13px;
+  font-size: 13px;
+  margin: 4px 0 8px;
+}
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: #646b7d;
+  margin: 12px 0;
+  line-height: 1.45;
+}
+.check input {
+  accent-color: var(--accent);
+  margin-top: 2px;
+}
+.twocol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 /* ============================================================
@@ -1027,10 +1052,8 @@ nav a:hover {
   flex-direction: column;
   gap: 14px;
   padding: 22px 16px;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--line);
   background: var(--panel);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
 }
 .sidebar .brand {
   padding: 4px 10px 8px;
@@ -1041,12 +1064,12 @@ nav a:hover {
   justify-content: center;
   gap: 8px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 13px;
   padding: 13px;
   font-weight: 800;
-  color: #06122e;
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
-  box-shadow: 0 10px 26px rgba(94, 139, 255, 0.3);
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 8px 18px rgba(114, 85, 236, 0.26);
 }
 .newplan .plus {
   font-size: 18px;
@@ -1071,18 +1094,18 @@ nav a:hover {
   border: 0;
   border-radius: 12px;
   background: transparent;
-  color: var(--muted);
-  font-weight: 600;
+  color: #62687b;
+  font-weight: 650;
   font-size: 14px;
   padding: 12px 13px;
 }
 .navitem:hover {
-  background: var(--panel-2);
+  background: #f6f4ff;
   color: var(--ink);
 }
 .navitem.active {
-  background: rgba(94, 139, 255, 0.14);
-  color: var(--accent-2);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 .navicon {
   font-size: 16px;
@@ -1090,7 +1113,7 @@ nav a:hover {
 .navbadge {
   margin-left: auto;
   background: var(--accent);
-  color: #06122e;
+  color: #fff;
   font-size: 11px;
   font-weight: 800;
   border-radius: 10px;
@@ -1107,19 +1130,18 @@ nav a:hover {
   order: 2;
 }
 .signout {
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
   border-radius: 12px;
   padding: 11px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 13px;
 }
 .signout:hover {
   color: var(--ink);
-  border-color: var(--border-2);
+  border-color: var(--line-2);
 }
-
 .content {
   padding: 30px clamp(18px, 4vw, 54px);
   max-width: 1000px;
@@ -1134,7 +1156,7 @@ nav a:hover {
 .pagetitle {
   font-size: 30px;
   font-weight: 800;
-  letter-spacing: -1.1px;
+  letter-spacing: -1px;
   margin: 0 0 4px;
 }
 
@@ -1152,29 +1174,26 @@ nav a:hover {
 }
 .filter span {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.6px;
   text-transform: uppercase;
   color: var(--faint);
 }
 .filter select {
   appearance: none;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
+  border: 1px solid var(--line);
+  background: var(--panel);
   color: var(--ink);
   border-radius: 12px;
   padding: 11px 32px 11px 14px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 13px;
   outline: 0;
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 17px) center, calc(100% - 12px) center;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
-}
-.filter select option {
-  background: #0d1526;
-  color: var(--ink);
 }
 
 .content .feed {
@@ -1183,13 +1202,12 @@ nav a:hover {
 
 /* ---- Plan card extras ---- */
 .eventbadge {
-  background: rgba(94, 139, 255, 0.14);
-  color: var(--accent-2);
-  border: 1px solid rgba(94, 139, 255, 0.25);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-size: 11px;
   font-weight: 800;
   padding: 6px 11px;
-  border-radius: 20px;
+  border-radius: 99px;
   white-space: nowrap;
 }
 .minetag {
@@ -1202,9 +1220,9 @@ nav a:hover {
   text-align: center;
   padding: 50px 24px;
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 22px;
-  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-soft);
 }
 .emptyemoji {
   font-size: 48px;
@@ -1226,11 +1244,9 @@ nav a:hover {
 .profilecard {
   max-width: 620px;
   background: var(--panel);
-  border: 1px solid var(--border);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  border-radius: 24px;
-  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
   padding: 26px 28px;
 }
 .profiletop {
@@ -1258,8 +1274,8 @@ nav a:hover {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(4, 8, 18, 0.62);
-  backdrop-filter: blur(6px);
+  background: rgba(36, 39, 77, 0.38);
+  backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
   padding: 24px;
@@ -1271,11 +1287,9 @@ nav a:hover {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  background: var(--panel-strong);
-  border: 1px solid var(--border-2);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
-  border-radius: 24px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 22px;
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -1284,7 +1298,7 @@ nav a:hover {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 .modal-head h2 {
   margin: 0;
@@ -1294,7 +1308,7 @@ nav a:hover {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   background: var(--panel-2);
   color: var(--ink);
   font-size: 14px;
@@ -1309,7 +1323,7 @@ nav a:hover {
   justify-content: space-between;
   gap: 12px;
   padding: 16px 24px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
 }
 .pickrow {
   display: flex;
@@ -1322,9 +1336,9 @@ nav a:hover {
 .drawhint {
   margin-top: 12px;
   font-size: 12px;
-  color: var(--faint);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px dashed var(--border-2);
+  color: #177a58;
+  background: #eef9f3;
+  border: 1px solid #c9ecdc;
   border-radius: 12px;
   padding: 11px 13px;
 }
@@ -1350,23 +1364,23 @@ nav a:hover {
 }
 .slotday {
   font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
+  font-weight: 750;
+  color: #555d71;
   text-align: left;
   background: var(--panel-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 7px 8px;
 }
 .slotcell {
   height: 26px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
   padding: 0;
 }
 .slotcell.on {
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  background: var(--accent);
   border-color: var(--accent);
 }
 .slothint {
@@ -1375,14 +1389,60 @@ nav a:hover {
   padding: 14px 0;
 }
 
+/* ---- Area map (Leaflet) ---- */
+.areamapwrap {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.areamap {
+  height: 280px;
+  width: 100%;
+}
+.areamap .leaflet-container {
+  background: #e9ecf5;
+}
+.areamap-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+.areamap-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.areamap-btns {
+  display: flex;
+  gap: 8px;
+}
+
 /* ============================================================
-   Responsive: collapse sidebar + auth
+   Responsive
    ============================================================ */
 @media (max-width: 880px) {
   .authwrap {
     grid-template-columns: 1fr;
   }
   .authside {
+    display: none;
+  }
+  .shell {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    max-width: 650px;
+  }
+  .aside {
+    padding: 14px 0 4px;
+  }
+  .app {
+    padding: 25px;
+    min-height: 560px;
+  }
+  nav a {
     display: none;
   }
   .layout {
@@ -1424,5 +1484,8 @@ nav a:hover {
   .notifpanel {
     right: auto;
     left: 0;
+  }
+  .twocol {
+    grid-template-columns: 1fr;
   }
 }
