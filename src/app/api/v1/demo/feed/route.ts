@@ -81,9 +81,8 @@ export async function POST(req: NextRequest) {
 
   const cards = DEMO_PROFILES.map((p) => {
     const result = buildProposals(viewer, profileToRequest(p, input.mode));
-    const sharedActivities = input.activityIds
-      .filter((id) => p.activityIds.includes(id))
-      .map((id) => activityById(id)?.label ?? id);
+    const sharedActivityIds = input.activityIds.filter((id) => p.activityIds.includes(id));
+    const sharedActivities = sharedActivityIds.map((id) => activityById(id)?.label ?? id);
     return {
       id: p.id,
       name: p.name,
@@ -96,6 +95,7 @@ export async function POST(req: NextRequest) {
       hasMatch: result.proposals.length > 0,
       reason: result.reason ?? null,
       sharedActivities,
+      sharedActivityIds,
       slots: result.proposals.slice(0, 2).map((pr) => ({
         startsAt: new Date(pr.startsAt).toISOString(),
         endsAt: new Date(pr.endsAt).toISOString(),

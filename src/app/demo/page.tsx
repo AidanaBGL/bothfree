@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { MonthCalendar } from "@/components/MonthCalendar";
 import { ACTIVITIES, AREAS, TIME_BANDS, type TimeBand } from "@/lib/reference/catalog";
+import { buildDateHelper } from "@/lib/dateideas/conversation";
 
 type Mode = "invite" | "friendship" | "dating";
 
 const SESSION_KEY = "bf-demo-session";
-const TEST_IDENTITY = { name: "Jury Test", email: "jury@bothfree.app" };
+const TEST_IDENTITY = { name: "Guest", email: "demo@bothfree.app" };
 
 const MODES: { id: Mode; emoji: string; title: string; desc: string }[] = [
   { id: "invite", emoji: "💌", title: "Invite someone I know", desc: "Make that “we should meet” happen." },
@@ -41,6 +42,7 @@ interface Card {
   hasMatch: boolean;
   reason: string | null;
   sharedActivities: string[];
+  sharedActivityIds: string[];
   slots: Slot[];
 }
 interface Notif {
@@ -78,6 +80,10 @@ export default function DemoPage() {
   const [unread, setUnread] = useState(0);
   const [bellOpen, setBellOpen] = useState(false);
 
+  // Premium (Test mode) + date helper
+  const [premium, setPremium] = useState(false);
+  const [helperFor, setHelperFor] = useState<string | null>(null);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SESSION_KEY);
@@ -88,9 +94,14 @@ export default function DemoPage() {
     setReady(true);
   }, []);
 
-  function enterAsJury() {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(TEST_IDENTITY));
-    setSession(TEST_IDENTITY);
+  // Login form fields, pre-filled with demo credentials.
+  const [email, setEmail] = useState(TEST_IDENTITY.email);
+  const [password, setPassword] = useState("bothfree-demo");
+
+  function signIn() {
+    const identity = { name: TEST_IDENTITY.name, email: email.trim() || TEST_IDENTITY.email };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(identity));
+    setSession(identity);
   }
   function signOut() {
     localStorage.removeItem(SESSION_KEY);
@@ -195,49 +206,66 @@ export default function DemoPage() {
 
   if (!ready) return null;
 
-  // ---- Jury login gate ----
+  // ---- Login ----
   if (!session) {
     return (
       <>
         <DemoHeader />
         <main className="shell">
           <aside className="aside">
-            <div className="eyebrow">✳ For the jury</div>
+            <div className="eyebrow">✳ Welcome back</div>
             <h1>
-              No sign-up
+              Good plans
               <br />
-              needed — <em>just enter.</em>
+              start when
+              <br />
+              <em>both are free.</em>
             </h1>
             <p>
-              This is the one-tap test account from the spec. Credentials are
-              pre-filled; click to enter and explore the full flow without
-              creating anything.
+              Sign in to pick up where you left off and find your next real-life
+              moment.
             </p>
           </aside>
           <section className="app">
             <div className="step">
-              <h2>Test account</h2>
-              <p className="sub">Pre-placed credentials for reviewers.</p>
-              <div className="summary">
-                <div className="summaryline">
+              <h2>Sign in</h2>
+              <p className="sub">Enter your details to continue.</p>
+              <form
+                className="loginform"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  signIn();
+                }}
+              >
+                <label className="field">
                   <span>Email</span>
-                  <b>{TEST_IDENTITY.email}</b>
-                </div>
-                <div className="summaryline">
+                  <input
+                    type="email"
+                    className="custominput"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                  />
+                </label>
+                <label className="field">
                   <span>Password</span>
-                  <b>••••••• (test)</b>
+                  <input
+                    type="password"
+                    className="custominput"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                  />
+                </label>
+                <div className="footer">
+                  <button type="submit" className="continue">
+                    Log in →
+                  </button>
+                  <div className="hint">New here? Create an account</div>
                 </div>
-                <div className="summaryline">
-                  <span>Room</span>
-                  <b>Isolated demo room</b>
-                </div>
-              </div>
-              <div className="footer">
-                <button className="continue" onClick={enterAsJury}>
-                  Enter as Jury Test →
-                </button>
-                <div className="hint">No real account is created in this demo.</div>
-              </div>
+              </form>
             </div>
           </section>
         </main>
@@ -256,6 +284,8 @@ export default function DemoPage() {
           bellOpen={bellOpen}
           onBell={openBell}
           notifs={notifs}
+          premium={premium}
+          onTogglePremium={() => setPremium((p) => !p)}
         />
         <main className="feedshell">
           <div className="feedbar">
@@ -270,6 +300,12 @@ export default function DemoPage() {
               New search ↻
             </button>
           </div>
+
+          {!premium && (cards ?? []).some((c) => c.likesYouBack) && (
+            <button className="upsell" onClick={() => setPremium(true)}>
+              ✨ Someone in your feed already likes you — unlock Premium (test) to see who.
+            </button>
+          )}
 
           <div className="feed">
             {visibleCards.map((c) => (
@@ -291,6 +327,7 @@ export default function DemoPage() {
 
                 <p className="pcard-bio">{c.bio}</p>
                 <div className="avail">🗓️ {c.availabilityLabel}</div>
+                {premium && c.likesYouBack && <div className="likesyou">♥ Likes you back</div>}
 
                 {c.sharedActivities.length > 0 && (
                   <div className="tagrow">
@@ -331,6 +368,32 @@ export default function DemoPage() {
                     {matched.has(c.id) ? "Match sent ✓" : "Send match"}
                   </button>
                 </div>
+
+                {c.hasMatch && (
+                  <>
+                    <button
+                      className="helperbtn"
+                      onClick={() => setHelperFor(helperFor === c.id ? null : c.id)}
+                    >
+                      💬 Icebreakers & date ideas{premium ? "" : " · Premium"}
+                    </button>
+                    {helperFor === c.id &&
+                      (premium ? (
+                        <HelperPanel card={c} mode={(mode || "dating") as Mode} />
+                      ) : (
+                        <div className="locked">
+                          <strong>✨ Premium feature</strong>
+                          <p>
+                            Get tailored icebreakers and a first-date plan for {c.name}, based on
+                            what you share — no AI, just smart suggestions.
+                          </p>
+                          <button className="matchbtn" onClick={() => setPremium(true)}>
+                            Switch to Premium (test)
+                          </button>
+                        </div>
+                      ))}
+                  </>
+                )}
               </article>
             ))}
 
@@ -503,7 +566,7 @@ export default function DemoPage() {
             <button className="continue" onClick={advance} disabled={!canContinue || loading}>
               {loading ? "Finding people…" : step === 4 ? "Find people ✨" : "Continue →"}
             </button>
-            <div className="hint">Signed in as {session.email} · isolated demo room</div>
+            <div className="hint">Signed in as {session.email}</div>
           </div>
         </section>
       </main>
@@ -518,8 +581,10 @@ function DemoHeader(props: {
   bellOpen?: boolean;
   onBell?: () => void;
   notifs?: Notif[];
+  premium?: boolean;
+  onTogglePremium?: () => void;
 }) {
-  const { session, onSignOut, unread = 0, bellOpen, onBell, notifs = [] } = props;
+  const { session, onSignOut, unread = 0, bellOpen, onBell, notifs = [], premium, onTogglePremium } = props;
   return (
     <header>
       <div className="logo">
@@ -529,6 +594,15 @@ function DemoHeader(props: {
         </Link>
       </div>
       <nav>
+        {session && onTogglePremium && (
+          <button
+            className={`premiumbtn${premium ? " on" : ""}`}
+            onClick={onTogglePremium}
+            title="Test mode — no real charge"
+          >
+            {premium ? "★ Premium · test" : "Try Premium (test)"}
+          </button>
+        )}
         {session && onBell && (
           <div className="bellwrap">
             <button className="bell" onClick={onBell} aria-label="Notifications">
@@ -555,6 +629,45 @@ function DemoHeader(props: {
         )}
       </nav>
     </header>
+  );
+}
+
+function HelperPanel({ card, mode }: { card: Card; mode: Mode }) {
+  const helper = useMemo(
+    () =>
+      buildDateHelper({
+        mode,
+        otherName: card.name,
+        otherAge: card.age,
+        areaLabels: card.areaLabels,
+        sharedActivityIds: card.sharedActivityIds,
+      }),
+    [card, mode],
+  );
+  return (
+    <div className="helper">
+      <div className="helper-sec">
+        <strong>Break the ice</strong>
+        <ul>
+          {helper.icebreakers.map((q, i) => (
+            <li key={i}>{q}</li>
+          ))}
+        </ul>
+      </div>
+      <div className="helper-sec">
+        <strong>A good first date</strong>
+        <p>{helper.firstDateIdea}</p>
+      </div>
+      <div className="helper-sec">
+        <strong>If it goes well</strong>
+        <ul>
+          {helper.nextDateIdeas.map((q, i) => (
+            <li key={i}>{q}</li>
+          ))}
+        </ul>
+      </div>
+      <div className="helper-foot">Suggestions are rule-based from what you share — not AI.</div>
+    </div>
   );
 }
 
