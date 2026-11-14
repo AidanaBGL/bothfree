@@ -13,6 +13,7 @@ const SESSION_KEY = "bf-demo-session";
 const TEST_IDENTITY = { name: TEST_PROFILE.name, email: "demo@bothfree.app" };
 
 type View = "feed" | "plans" | "profile";
+type Mode = "invite" | "friendship" | "dating";
 
 interface Notif {
   id: number;
@@ -617,7 +618,17 @@ for (let h = 0; h < 24; h++) {
   HOUR_LABELS[h] = `${base}:00 ${period}`;
 }
 
+const CREATE_MODES: { id: Mode; emoji: string; title: string; desc: string }[] = [
+  { id: "invite", emoji: "💌", title: "Invite someone I know", desc: "Plan with a person you already know." },
+  { id: "friendship", emoji: "🫶", title: "Find a new friend", desc: "Meet people by shared interests." },
+  { id: "dating", emoji: "💚", title: "Find a date", desc: "Meet someone new for a date." },
+];
+
+const CREATE_STEPS = 6;
+
 function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (plan: DemoPlan) => void }) {
+  const [step, setStep] = useState(0);
+  const [mode, setMode] = useState<Mode | "">("");
   const [activity, setActivity] = useState("");
   const [area, setArea] = useState("");
   const [customRing, setCustomRing] = useState<[number, number][] | null>(null);
@@ -627,12 +638,18 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
   const [note, setNote] = useState("");
 
   const hasSlot = Object.values(slots).some((hrs) => hrs.length > 0);
-  // A drawn area takes precedence over a preset chip.
   const effectiveArea = customRing ? "custom" : area;
-  const canPost = !!activity && !!effectiveArea && days.length > 0 && hasSlot;
+
+  // Whether the current step is complete enough to advance.
+  const stepValid =
+    (step === 0 && !!mode) ||
+    (step === 1 && !!activity) ||
+    (step === 2 && days.length > 0) ||
+    (step === 3 && hasSlot) ||
+    (step === 4 && !!effectiveArea) ||
+    step === 5;
 
   function post() {
-    // Earliest selected day that has a slot, and its earliest hour.
     const dayWithSlot = days.filter((d) => (slots[d] ?? []).length > 0).sort()[0];
     const hour = Math.min(...(slots[dayWithSlot] ?? [9]));
     const d = new Date(`${dayWithSlot}T00:00:00`);
@@ -659,6 +676,11 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
     });
   }
 
+  function advance() {
+    if (step < CREATE_STEPS - 1) setStep(step + 1);
+    else post();
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -668,60 +690,112 @@ function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (pl
             ✕
           </button>
         </div>
-        <div className="modal-body">
-          <div className="sectionlabel">What do you want to do?</div>
-          <div className="pickrow">
-            {ACTIVITIES.map((a) => (
-              <button key={a.id} className={`chip${activity === a.id ? " sel" : ""}`} onClick={() => setActivity(a.id)}>
-                {a.emoji} {a.label}
-              </button>
-            ))}
-          </div>
 
-          <div className="sectionlabel">Where? Pick an area…</div>
-          <div className="pickrow">
-            {AREAS.filter((a) => a.id !== "anywhere").map((a) => (
-              <button
-                key={a.id}
-                className={`chip${!customRing && area === a.id ? " sel" : ""}`}
-                onClick={() => setArea(a.id)}
-                disabled={!!customRing}
-              >
-                {a.emoji} {a.label}
-              </button>
-            ))}
-          </div>
-          <div className="sectionlabel">…or draw your exact area on the map</div>
-          <AreaMap onChange={setCustomRing} />
-          {customRing && (
-            <div className="drawhint">✅ Using your drawn area. Clear the map to pick a preset instead.</div>
-          )}
-
-          <div className="sectionlabel">Which days?</div>
-          <MonthCalendar selected={days} onChange={setDays} />
-
-          <div className="sectionlabel">Pick times for each day</div>
-          <TimeSlotTable days={days} value={slots} onChange={setSlots} />
-
-          <div className="sectionlabel">Budget per person</div>
-          <div className="amount">${budget}</div>
-          <input className="slider" type="range" min={0} max={200} step={5} value={budget} onChange={(e) => setBudget(Number(e.target.value))} aria-label="Budget" />
-
-          <div className="sectionlabel">A note (optional)</div>
-          <textarea
-            className="custominput"
-            rows={3}
-            placeholder="Say a little about the vibe you're after…"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
+        <div className="wizprog">
+          {Array.from({ length: CREATE_STEPS }, (_, i) => (
+            <span key={i} className={i <= step ? "on" : ""} />
+          ))}
         </div>
+
+        <div className="modal-body">
+          <div className="step wizstep" key={step}>
+            {step === 0 && (
+              <>
+                <h2>What kind of plan? ✨</h2>
+                <p className="sub">Friend and date are always kept separate.</p>
+                <div className="cards">
+                  {CREATE_MODES.map((m) => (
+                    <button key={m.id} className={`choice${mode === m.id ? " sel" : ""}`} onClick={() => setMode(m.id)}>
+                      <span className="emoji">{m.emoji}</span>
+                      <strong>{m.title}</strong>
+                      <small>{m.desc}</small>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {step === 1 && (
+              <>
+                <h2>What do you want to do? 🎈</h2>
+                <p className="sub">Pick the activity for your plan.</p>
+                <div className="pickrow">
+                  {ACTIVITIES.map((a) => (
+                    <button key={a.id} className={`chip${activity === a.id ? " sel" : ""}`} onClick={() => setActivity(a.id)}>
+                      {a.emoji} {a.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <h2>When are you free? 📅</h2>
+                <p className="sub">Pick the days that work — single days or a range.</p>
+                <MonthCalendar selected={days} onChange={setDays} />
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <h2>What times on those days? ⏰</h2>
+                <p className="sub">Tap the hours you’re free for each day.</p>
+                <TimeSlotTable days={days} value={slots} onChange={setSlots} />
+              </>
+            )}
+
+            {step === 4 && (
+              <>
+                <h2>Where should it be? 📍</h2>
+                <p className="sub">Pick an area, or draw your exact spot on the map.</p>
+                <div className="pickrow">
+                  {AREAS.filter((a) => a.id !== "anywhere").map((a) => (
+                    <button
+                      key={a.id}
+                      className={`chip${!customRing && area === a.id ? " sel" : ""}`}
+                      onClick={() => setArea(a.id)}
+                      disabled={!!customRing}
+                    >
+                      {a.emoji} {a.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="sectionlabel">…or draw your exact area</div>
+                <AreaMap onChange={setCustomRing} />
+                {customRing && <div className="drawhint">✅ Using your drawn area. Clear the map to pick a preset.</div>}
+              </>
+            )}
+
+            {step === 5 && (
+              <>
+                <h2>Set your budget 💸</h2>
+                <p className="sub">Great plans don’t need to cost a fortune.</p>
+                <div className="amount">${budget}</div>
+                <input className="slider" type="range" min={0} max={200} step={5} value={budget} onChange={(e) => setBudget(Number(e.target.value))} aria-label="Budget" />
+                <div className="range">
+                  <span>$0</span>
+                  <span>$200+</span>
+                </div>
+                <div className="sectionlabel">A note (optional)</div>
+                <textarea
+                  className="custominput"
+                  rows={3}
+                  placeholder="Say a little about the vibe you're after…"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              </>
+            )}
+          </div>
+        </div>
+
         <div className="modal-foot">
-          <button className="passbtn" onClick={onClose}>
-            Cancel
+          <button className="passbtn" onClick={() => (step === 0 ? onClose() : setStep(step - 1))}>
+            {step === 0 ? "Cancel" : "← Back"}
           </button>
-          <button className="continue" style={{ width: "auto", padding: "14px 26px" }} disabled={!canPost} onClick={post}>
-            Post plan ✨
+          <button className="continue" style={{ width: "auto", padding: "14px 26px" }} disabled={!stepValid} onClick={advance}>
+            {step === CREATE_STEPS - 1 ? "Post plan ✨" : "Continue →"}
           </button>
         </div>
       </div>
