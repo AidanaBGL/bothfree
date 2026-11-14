@@ -8,6 +8,7 @@ import { AreaMap } from "@/components/AreaMap";
 import { ACTIVITIES, AREAS, activityById, areaById } from "@/lib/reference/catalog";
 import { buildDateHelper } from "@/lib/dateideas/conversation";
 import { DEMO_PLANS, TEST_PROFILE, type DemoPlan, type DateTag } from "@/lib/demo/plans";
+import { TEST_PROFILES } from "@/lib/demo/testProfiles";
 import {
   COMFORTS,
   WITH_WHOM,
@@ -26,7 +27,13 @@ import { dateOverlap, budgetOverlap, formatOverlap } from "@/lib/travel/overlap"
 import { INCOMING_REQUESTS, FRIEND_SUGGESTIONS, type Person } from "@/lib/demo/friends";
 
 const SESSION_KEY = "bf-demo-session";
-const TEST_IDENTITY = { name: TEST_PROFILE.name, email: "demo@bothfree.app" };
+type AccountKind = "jury" | "demo" | "registered";
+interface Session {
+  name: string;
+  email: string;
+  kind: AccountKind;
+}
+const TEST_IDENTITY: Session = { name: TEST_PROFILE.name, email: "demo@bothfree.app", kind: "demo" };
 
 type View = "feed" | "travel" | "friends" | "plans" | "profile";
 type Mode = "invite" | "friendship" | "dating";
@@ -42,6 +49,8 @@ export default function DemoPage() {
   const [session, setSession] = useState<typeof TEST_IDENTITY | null>(null);
   const [ready, setReady] = useState(false);
 
+  // Entry: which screen the logged-out visitor sees.
+  const [entryScreen, setEntryScreen] = useState<"home" | "auth">("home");
   // Auth: sign-in fields pre-filled with demo credentials.
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState(TEST_IDENTITY.email);
@@ -97,7 +106,10 @@ export default function DemoPage() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SESSION_KEY);
-      if (raw) setSession(JSON.parse(raw));
+      if (raw) {
+        const s = JSON.parse(raw);
+        setSession({ name: s.name, email: s.email, kind: (s.kind as AccountKind) ?? "demo" });
+      }
     } catch {
       /* ignore */
     }
@@ -109,7 +121,13 @@ export default function DemoPage() {
     setSession(identity);
   }
   function signIn() {
-    startSession({ name: TEST_IDENTITY.name, email: email.trim() || TEST_IDENTITY.email });
+    startSession({ name: TEST_IDENTITY.name, email: email.trim() || TEST_IDENTITY.email, kind: "registered" });
+  }
+  function enterJury() {
+    startSession({ name: "Jury", email: "jury@bothfree.app", kind: "jury" });
+  }
+  function enterDemoUser() {
+    startSession({ name: TEST_PROFILE.name, email: "demo@bothfree.app", kind: "demo" });
   }
   function signUp() {
     setAuthError(null);
@@ -121,7 +139,7 @@ export default function DemoPage() {
     if (ageFromDob(suDob) < 18) return setAuthError("You must be 18 or older to join.");
     if (!suGender) return setAuthError("Please choose how you describe your gender.");
     if (!suTerms) return setAuthError("Please accept the terms to continue.");
-    startSession({ name, email: suEmail.trim() });
+    startSession({ name, email: suEmail.trim(), kind: "registered" });
   }
   function signOut() {
     localStorage.removeItem(SESSION_KEY);
@@ -199,7 +217,7 @@ export default function DemoPage() {
   );
   const tripDestinations = useMemo(() => Array.from(new Set(DEMO_TRIPS.map((t) => t.destination))), []);
 
-  const allPlans = useMemo(() => [...myPlans, ...DEMO_PLANS], [myPlans]);
+  const allPlans = useMemo(() => [...myPlans, ...DEMO_PLANS, ...TEST_PROFILES], [myPlans]);
   const visiblePlans = useMemo(
     () =>
       allPlans.filter(
@@ -235,8 +253,48 @@ export default function DemoPage() {
           <div className="authfoot">Deterministic matching · no AI · New York</div>
         </aside>
         <main className="authmain">
-          <div className="authcard">
-            <div className="authswitch">
+          {entryScreen === "home" ? (
+            <div className="authcard">
+              <h2>Welcome to BothFree</h2>
+              <p className="sub">Less planning. More living.</p>
+              <div className="entrybtns">
+                <button className="entrybtn jury" onClick={enterJury}>
+                  <span className="entryemoji">⚖️</span>
+                  <span className="entrytext">
+                    <strong>Jury Access</strong>
+                    <small>Isolated demo — explore everything, no real user data.</small>
+                  </span>
+                </button>
+                <button className="entrybtn demo" onClick={enterDemoUser}>
+                  <span className="entryemoji">🧭</span>
+                  <span className="entrytext">
+                    <strong>Explore as User</strong>
+                    <small>Try the main features with a ready demo profile.</small>
+                  </span>
+                </button>
+                <button className="entrybtn" onClick={() => { setEntryScreen("auth"); setAuthMode("signin"); setAuthError(null); }}>
+                  <span className="entryemoji">🔑</span>
+                  <span className="entrytext">
+                    <strong>Log In</strong>
+                    <small>Sign in to your existing account.</small>
+                  </span>
+                </button>
+                <button className="entrybtn" onClick={() => { setEntryScreen("auth"); setAuthMode("signup"); setAuthError(null); }}>
+                  <span className="entryemoji">✨</span>
+                  <span className="entrytext">
+                    <strong>Sign Up</strong>
+                    <small>Create a new account with email verification.</small>
+                  </span>
+                </button>
+              </div>
+              <p className="hint">Find friends, discover experiences, and make plans that actually happen.</p>
+            </div>
+          ) : (
+            <div className="authcard">
+              <button type="button" className="linkbtn" style={{ marginBottom: 12 }} onClick={() => setEntryScreen("home")}>
+                ← Back
+              </button>
+              <div className="authswitch">
               <button className={authMode === "signin" ? "on" : ""} onClick={() => { setAuthMode("signin"); setAuthError(null); }}>
                 Sign in
               </button>
@@ -329,7 +387,8 @@ export default function DemoPage() {
                 </div>
               </form>
             )}
-          </div>
+            </div>
+          )}
         </main>
       </div>
     );
@@ -345,6 +404,9 @@ export default function DemoPage() {
             <span className="dot">.</span>
           </Link>
         </div>
+        <span className={`kindpill kind-${session.kind}`}>
+          {session.kind === "jury" ? "⚖️ Jury access" : session.kind === "demo" ? "🧭 Demo user" : "✓ Account"}
+        </span>
 
         <button className="newplan" onClick={() => setCreateOpen(true)}>
           <span className="plus">+</span> New plan
@@ -399,12 +461,17 @@ export default function DemoPage() {
       </aside>
 
       <main className="content">
+        {session.kind === "jury" && (
+          <div className="jurybanner">
+            ⚖️ Jury view — isolated demo environment. Profiles are test data; no real user information is shown. Change filters to see the matching update live.
+          </div>
+        )}
         {view === "feed" && (
           <>
             <div className="contenthead">
               <div>
                 <h1 className="pagetitle">Discover plans</h1>
-                <p className="sub">People posting when and where they want to meet.</p>
+                <p className="sub">{allPlans.length} demo profiles · matching is real — change filters to see it update.</p>
               </div>
               <button className="newplan compact" onClick={() => setCreateOpen(true)}>
                 <span className="plus">+</span> New plan

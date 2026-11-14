@@ -1646,3 +1646,84 @@ nav a:hover {
   padding: 10px 16px;
   width: auto;
 }
+
+/* ---- 4-button entry ---- */
+.entrybtns {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin: 18px 0 10px;
+}
+.entrybtn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 16px;
+  padding: 15px 17px;
+  transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+}
+.entrybtn:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 7px 18px rgba(24, 62, 50, 0.08);
+}
+.entrybtn.jury {
+  background: var(--accent-soft);
+  border-color: #d3e2d6;
+}
+.entrybtn.demo {
+  background: #f4f7f1;
+}
+.entryemoji {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+.entrytext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.entrytext strong {
+  font-size: 15px;
+}
+.entrytext small {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ---- Account kind pill + jury banner ---- */
+.kindpill {
+  margin: -2px 10px 6px;
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.kindpill.kind-jury {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: #d3e2d6;
+}
+.kindpill.kind-demo {
+  background: #eef4fb;
+  color: #3a6ea5;
+  border-color: #d7e4f2;
+}
+.jurybanner {
+  background: var(--accent-soft);
+  border: 1px solid #d3e2d6;
+  color: var(--accent);
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
