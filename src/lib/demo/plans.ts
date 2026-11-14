@@ -65,6 +65,8 @@ export interface DemoPlan {
   mode?: "invite" | "friendship" | "dating";
   /** Share token for "invite someone" plans. */
   inviteToken?: string;
+  /** Supabase owner id (set when loaded from the database). */
+  ownerId?: string;
 }
 
 export const DEMO_PLANS: DemoPlan[] = [

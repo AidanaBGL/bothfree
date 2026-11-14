@@ -27,6 +27,7 @@ import { dateOverlap, budgetOverlap, formatOverlap } from "@/lib/travel/overlap"
 import { INCOMING_REQUESTS, FRIEND_SUGGESTIONS, type Person } from "@/lib/demo/friends";
 import { SEED_CONVERSATIONS, CANNED_REPLIES, type Conversation } from "@/lib/demo/messages";
 import { supabaseConfigured, authSignUp, authVerify, authSignIn, authSignOut, authCurrentUser } from "@/lib/auth/actions";
+import { getUserId, fetchPlans, insertPlan, fetchTrips, insertTrip, fetchMyProfile, type DbProfile } from "@/lib/data/store";
 
 const SESSION_KEY = "bf-demo-session";
 type AccountKind = "jury" | "demo" | "registered";
@@ -110,6 +111,12 @@ export default function DemoPage() {
   const [openChat, setOpenChat] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
+  // Supabase-backed data (registered accounts)
+  const [uid, setUid] = useState<string | null>(null);
+  const [dbPlans, setDbPlans] = useState<DemoPlan[]>([]);
+  const [dbTrips, setDbTrips] = useState<DemoTrip[]>([]);
+  const [dbProfile, setDbProfile] = useState<DbProfile | null>(null);
+
   // Create modals
   const [createOpen, setCreateOpen] = useState(false);
   const [createTripOpen, setCreateTripOpen] = useState(false);
@@ -146,6 +153,31 @@ export default function DemoPage() {
       setConversations(SEED_CONVERSATIONS);
       setIncoming(INCOMING_REQUESTS);
     }
+  }, [session?.kind]);
+
+  // Load this user's plans/trips/profile from Supabase on real sign-in.
+  useEffect(() => {
+    if (!(supabaseConfigured() && session?.kind === "registered")) {
+      setDbPlans([]);
+      setDbTrips([]);
+      setDbProfile(null);
+      setUid(null);
+      return;
+    }
+    let active = true;
+    (async () => {
+      const id = await getUserId();
+      if (!active) return;
+      setUid(id);
+      const [pl, tr, prof] = await Promise.all([fetchPlans(), fetchTrips(id), fetchMyProfile()]);
+      if (!active) return;
+      setDbPlans(pl);
+      setDbTrips(tr);
+      setDbProfile(prof);
+    })();
+    return () => {
+      active = false;
+    };
   }, [session?.kind]);
 
   function startSession(identity: typeof TEST_IDENTITY) {
@@ -306,12 +338,17 @@ export default function DemoPage() {
     addNotif({ emoji: "🚩", text: `Thanks — your report about ${name} was sent to our team.`, tone: "pending" });
   }
 
-  // Registered (real) accounts start clean; jury/demo accounts see seed data.
+  // Registered (real) accounts read from Supabase; jury/demo use seed data.
   const isDemo = session?.kind !== "registered";
+  const dbMode = supabaseConfigured() && session?.kind === "registered";
+  const myTripsList = dbMode ? dbTrips.filter((t) => t.mine) : myTrips;
 
   // The user's most recent posted trip powers the overlap badges in the feed.
-  const viewerTrip = myTrips[0] ?? null;
-  const allTrips = useMemo(() => (isDemo ? [...myTrips, ...DEMO_TRIPS] : [...myTrips]), [myTrips, isDemo]);
+  const viewerTrip = myTripsList[0] ?? null;
+  const allTrips = useMemo(
+    () => (isDemo ? [...myTrips, ...DEMO_TRIPS] : dbMode ? dbTrips : [...myTrips]),
+    [myTrips, isDemo, dbMode, dbTrips],
+  );
   const visibleTrips = useMemo(
     () =>
       allTrips.filter(
@@ -327,9 +364,10 @@ export default function DemoPage() {
 
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
   const allPlans = useMemo(
-    () => (isDemo ? [...myPlans, ...DEMO_PLANS, ...TEST_PROFILES] : [...myPlans]),
-    [myPlans, isDemo],
+    () => (isDemo ? [...myPlans, ...DEMO_PLANS, ...TEST_PROFILES] : dbMode ? dbPlans : [...myPlans]),
+    [myPlans, isDemo, dbMode, dbPlans],
   );
+  const myPlansList = dbMode ? dbPlans.filter((p) => p.ownerId === uid) : myPlans;
   const visiblePlans = useMemo(
     () =>
       allPlans.filter(
@@ -558,7 +596,7 @@ export default function DemoPage() {
             <button key={v} className={`navitem${view === v ? " active" : ""}`} onClick={() => setView(v)}>
               <span className="navicon">{icon}</span>
               {label}
-              {v === "plans" && myPlans.length > 0 && <span className="navbadge">{myPlans.length}</span>}
+              {v === "plans" && myPlansList.length > 0 && <span className="navbadge">{myPlansList.length}</span>}
               {v === "friends" && incoming.length > 0 && <span className="navbadge">{incoming.length}</span>}
               {v === "messages" && totalUnread > 0 && <span className="navbadge">{totalUnread}</span>}
             </button>
@@ -660,7 +698,7 @@ export default function DemoPage() {
                   liked={liked.has(p.id)}
                   requested={requested.has(p.id)}
                   helperOpen={helperFor === p.id}
-                  mine={myPlans.some((m) => m.id === p.id)}
+                  mine={dbMode ? p.ownerId === uid : myPlans.some((m) => m.id === p.id)}
                   onLike={() => like(p.id)}
                   onPass={() => setPassed((prev) => new Set(prev).add(p.id))}
                   onJoin={() => joinPlan(p)}
@@ -902,7 +940,7 @@ export default function DemoPage() {
               </button>
             </div>
             <div className="feed">
-              {myPlans.length === 0 && (
+              {myPlansList.length === 0 && (
                 <div className="emptybox">
                   <div className="emptyemoji">🗓️</div>
                   <h3>No plans yet</h3>
@@ -912,14 +950,14 @@ export default function DemoPage() {
                   </button>
                 </div>
               )}
-              {myPlans.map((p) => (
+              {myPlansList.map((p) => (
                 <PlanCard key={p.id} plan={p} premium={premium} liked={false} requested mine onLike={() => {}} onPass={() => {}} onJoin={() => {}} helperOpen={false} onToggleHelper={() => {}} onUpgrade={() => {}} onCopyInvite={() => copyInvite(p)} />
               ))}
             </div>
           </>
         )}
 
-        {view === "profile" && <ProfileView session={session} />}
+        {view === "profile" && <ProfileView session={session} demo={isDemo} profile={dbProfile} />}
       </main>
 
       {createOpen && (
@@ -929,8 +967,13 @@ export default function DemoPage() {
             setCreateOpen(false);
             setCreateTripOpen(true);
           }}
-          onPost={(plan) => {
-            setMyPlans((prev) => [plan, ...prev]);
+          onPost={async (plan) => {
+            if (dbMode) {
+              const saved = await insertPlan(plan);
+              if (saved) setDbPlans((prev) => [saved, ...prev]);
+            } else {
+              setMyPlans((prev) => [plan, ...prev]);
+            }
             setCreateOpen(false);
             setView("plans");
             if (plan.mode === "invite" && plan.inviteToken) {
@@ -945,8 +988,13 @@ export default function DemoPage() {
       {createTripOpen && (
         <CreateTripModal
           onClose={() => setCreateTripOpen(false)}
-          onPost={(trip) => {
-            setMyTrips((prev) => [trip, ...prev]);
+          onPost={async (trip) => {
+            if (dbMode) {
+              const saved = await insertTrip(trip);
+              if (saved) setDbTrips((prev) => [saved, ...prev]);
+            } else {
+              setMyTrips((prev) => [trip, ...prev]);
+            }
             setCreateTripOpen(false);
             setView("travel");
             addNotif({ emoji: "✈️", text: "Your trip is live. We’ll match travellers by dates, budget, and style.", tone: "match" });
@@ -1096,9 +1144,16 @@ function HelperPanel({ plan }: { plan: DemoPlan }) {
 
 /* ---------------- Profile ---------------- */
 
-function ProfileView({ session }: { session: typeof TEST_IDENTITY }) {
+function ProfileView({ session, demo, profile }: { session: typeof TEST_IDENTITY; demo: boolean; profile: DbProfile | null }) {
   const p = TEST_PROFILE;
-  const name = session.name || p.name;
+  const name = (demo ? p.name : profile?.name) || session.name || "You";
+  const emoji = demo ? p.emoji : "🧑";
+  const city = demo ? p.city : profile?.city ?? "New York";
+  const areaId = demo ? p.areaId : profile?.areaId ?? null;
+  const bio = demo ? p.bio : profile?.bio || "Add a short bio so people get a feel for you.";
+  const interests = demo ? p.interestIds : profile?.interests ?? [];
+  const friendly = demo ? p.lgbtqFriendly : Boolean(profile?.lgbtqFriendly);
+  const areaLabel = areaId ? areaById(areaId)?.label : null;
   return (
     <>
       <div className="contenthead">
@@ -1106,37 +1161,45 @@ function ProfileView({ session }: { session: typeof TEST_IDENTITY }) {
       </div>
       <div className="profilecard">
         <div className="profiletop">
-          <div className="avatar big">{p.emoji}</div>
+          <div className="avatar big">{emoji}</div>
           <div>
             <h2 className="profilename">
-              {name}, {p.age}
+              {name}
+              {demo ? `, ${p.age}` : ""}
             </h2>
-            <div className="pcard-area">📍 {p.city} · {areaById(p.areaId)?.label}</div>
+            <div className="pcard-area">
+              📍 {city}
+              {areaLabel ? ` · ${areaLabel}` : ""}
+            </div>
           </div>
-          <span className="eventbadge">Verified · demo</span>
+          <span className="eventbadge">{demo ? "Verified · demo" : "Your account"}</span>
         </div>
-        <p className="pcard-bio">{p.bio}</p>
-        {p.lgbtqFriendly && (
+        <p className="pcard-bio">{bio}</p>
+        {friendly && (
           <div className="badgerow">
             <span className="rainbowbadge">🏳️‍🌈 LGBTQ+ friendly</span>
           </div>
         )}
-        <div className="sectionlabel">Interests</div>
-        <div className="tagrow">
-          {p.interestIds.map((id) => (
-            <span className="tag" key={id}>
-              {activityById(id)?.emoji} {activityById(id)?.label}
-            </span>
-          ))}
-        </div>
+        {interests.length > 0 && (
+          <>
+            <div className="sectionlabel">Interests</div>
+            <div className="tagrow">
+              {interests.map((id) => (
+                <span className="tag" key={id}>
+                  {activityById(id)?.emoji} {activityById(id)?.label}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
         <div className="summary">
           <div className="summaryline">
             <span>City</span>
-            <b>{p.city}</b>
+            <b>{city}</b>
           </div>
           <div className="summaryline">
             <span>Preferred area</span>
-            <b>{areaById(p.areaId)?.label}</b>
+            <b>{areaLabel ?? "—"}</b>
           </div>
           <div className="summaryline">
             <span>Email</span>
