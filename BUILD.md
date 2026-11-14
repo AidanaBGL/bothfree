@@ -44,10 +44,20 @@ are only needed once the persistence and auth layers are wired.
   has reference activities + NYC only (no personal data).
 - **App shell** — landing page and `/premium` (ported from the approved
   prototype design), `/api/health`, `/api/ready`.
-- **No-login demo** — `/demo` wizard → `POST /api/v1/demo/match`, which runs the
-  **real** engine against a seeded counterpart ("Alex"). Proves live server-side
-  computation (not fixtures): success, empty-reason, and validation paths all
-  verified.
+- **No-login demo** — a working slice of the real product loop:
+  - **Jury test login** (`/demo`) — pre-placed test credentials, one tap to
+    enter (spec §15 one-tap account), persisted to `localStorage`.
+  - **Airline-style month calendar** (`src/components/MonthCalendar.tsx`) —
+    month navigation, arbitrary day selection, and a range-fill mode for several
+    consecutive days.
+  - **Custom activities** — add free-text activities alongside the preset 8.
+  - **Discovery feed** (`POST /api/v1/demo/feed`) — scrollable people cards for 6
+    seeded profiles, each scored by the **real** engine (shared time, activities,
+    area, budget), feasible plans ranked first. Like / Pass / Send match.
+  - **Notification center** — bell with unread count; a mutual (`likesYouBack`)
+    profile produces an "It's a match" notification.
+  - Also `POST /api/v1/demo/match` (single-counterpart) is kept. Success,
+    empty-reason, and validation paths all verified against the running server.
 - **Supabase clients** (`src/lib/supabase/{browser,server,admin}.ts`) and the
   standard API error envelope (`src/lib/http/errors.ts`).
 

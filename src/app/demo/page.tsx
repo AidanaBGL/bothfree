@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { MonthCalendar } from "@/components/MonthCalendar";
 import { ACTIVITIES, AREAS, TIME_BANDS, type TimeBand } from "@/lib/reference/catalog";
 
 type Mode = "invite" | "friendship" | "dating";
+
+const SESSION_KEY = "bf-demo-session";
+const TEST_IDENTITY = { name: "Jury Test", email: "jury@bothfree.app" };
 
 const MODES: { id: Mode; emoji: string; title: string; desc: string }[] = [
   { id: "invite", emoji: "💌", title: "Invite someone I know", desc: "Make that “we should meet” happen." },
@@ -12,86 +16,127 @@ const MODES: { id: Mode; emoji: string; title: string; desc: string }[] = [
   { id: "dating", emoji: "💗", title: "Find a date", desc: "Meet someone with shared free time." },
 ];
 
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const REASON_TEXT: Record<string, string> = {
-  no_shared_time: "No shared time — try adding more days or time bands.",
-  no_shared_activities: "No shared activities — pick something Alex also enjoys.",
-  no_shared_area: "No shared area — Alex meets in Manhattan or Brooklyn.",
-  no_option_within_budget: "No option within budget — nudge your budget up a little.",
+  no_shared_time: "No shared time with your days yet",
+  no_shared_activities: "No activities in common",
+  no_shared_area: "Different part of the city",
+  no_option_within_budget: "Outside your budget",
 };
 
-interface Proposal {
+interface Slot {
   startsAt: string;
-  endsAt: string;
   activityLabel: string;
   budgetCeilingCents: number;
   billStatus: string;
 }
-interface MatchResponse {
+interface Card {
+  id: string;
+  name: string;
+  emoji: string;
+  age: number;
+  bio: string;
+  availabilityLabel: string;
+  areaLabels: string[];
+  likesYouBack: boolean;
+  hasMatch: boolean;
   reason: string | null;
-  proposals: Proposal[];
-  partner: { displayName: string };
+  sharedActivities: string[];
+  slots: Slot[];
+}
+interface Notif {
+  id: number;
+  emoji: string;
+  text: string;
+  tone: "match" | "pending";
 }
 
 export default function DemoPage() {
+  const [session, setSession] = useState<typeof TEST_IDENTITY | null>(null);
+  const [ready, setReady] = useState(false);
+
+  // Onboarding state
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<Mode | "">("");
   const [days, setDays] = useState<string[]>([]);
   const [times, setTimes] = useState<TimeBand[]>([]);
-  const [activityIds, setActivityIds] = useState<string[]>([]);
+  const [presets, setPresets] = useState<string[]>([]);
+  const [customs, setCustoms] = useState<string[]>([]);
+  const [customDraft, setCustomDraft] = useState("");
   const [areaId, setAreaId] = useState("");
   const [budget, setBudget] = useState(60);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<MatchResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const next7 = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() + i);
-      return d;
-    });
+  // Feed state
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cards, setCards] = useState<Card[] | null>(null);
+  const [liked, setLiked] = useState<Set<string>>(new Set());
+  const [matched, setMatched] = useState<Set<string>>(new Set());
+  const [passed, setPassed] = useState<Set<string>>(new Set());
+
+  // Notifications
+  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [bellOpen, setBellOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (raw) setSession(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+    setReady(true);
   }, []);
-  const dateKey = (d: Date) => d.toISOString().slice(0, 10);
+
+  function enterAsJury() {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(TEST_IDENTITY));
+    setSession(TEST_IDENTITY);
+  }
+  function signOut() {
+    localStorage.removeItem(SESSION_KEY);
+    setSession(null);
+    restart();
+  }
+
+  const totalActivities = presets.length + customs.length;
+  const canContinue =
+    (step === 0 && !!mode) ||
+    (step === 1 && days.length > 0 && times.length > 0) ||
+    (step === 2 && totalActivities > 0) ||
+    (step === 3 && !!areaId) ||
+    step === 4 ||
+    step === 5;
 
   function toggle<T>(list: T[], value: T, setter: (v: T[]) => void, max = 99) {
     if (list.includes(value)) setter(list.filter((x) => x !== value));
     else if (list.length < max) setter([...list, value]);
   }
 
-  const canContinue =
-    (step === 0 && !!mode) ||
-    (step === 1 && days.length > 0 && times.length > 0) ||
-    (step === 2 && activityIds.length > 0) ||
-    (step === 3 && !!areaId) ||
-    step === 4 ||
-    step === 5;
+  function addCustom() {
+    const v = customDraft.trim();
+    if (v && !customs.includes(v) && customs.length < 3) setCustoms([...customs, v]);
+    setCustomDraft("");
+  }
 
-  async function submit() {
+  async function loadFeed() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/demo/match", {
+      const activityIds = [...presets, ...customs.map((c) => `custom:${c}`)];
+      const res = await fetch("/api/v1/demo/feed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode,
-          days,
-          times,
-          activityIds,
-          areaId,
-          budgetCents: budget * 100,
-        }),
+        body: JSON.stringify({ mode, days, times, activityIds, areaId, budgetCents: budget * 100 }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data?.error?.message ?? "Something went wrong.");
         return;
       }
-      setResult(data);
+      setCards(data.cards);
       setStep(5);
     } catch {
-      setError("Could not reach the matching service.");
+      setError("Could not reach the discovery service.");
     } finally {
       setLoading(false);
     }
@@ -99,11 +144,7 @@ export default function DemoPage() {
 
   function advance() {
     if (step === 4) {
-      void submit();
-      return;
-    }
-    if (step === 5) {
-      restart();
+      void loadFeed();
       return;
     }
     setStep(step + 1);
@@ -114,42 +155,218 @@ export default function DemoPage() {
     setMode("");
     setDays([]);
     setTimes([]);
-    setActivityIds([]);
+    setPresets([]);
+    setCustoms([]);
     setAreaId("");
     setBudget(60);
-    setResult(null);
-    setError(null);
+    setCards(null);
+    setLiked(new Set());
+    setMatched(new Set());
+    setPassed(new Set());
   }
 
+  function like(card: Card) {
+    setLiked((prev) => {
+      const next = new Set(prev);
+      next.has(card.id) ? next.delete(card.id) : next.add(card.id);
+      return next;
+    });
+  }
+  function pass(card: Card) {
+    setPassed((prev) => new Set(prev).add(card.id));
+  }
+  function sendMatch(card: Card) {
+    setMatched((prev) => new Set(prev).add(card.id));
+    const notif: Notif = card.likesYouBack
+      ? { id: Date.now(), emoji: card.emoji, text: `It’s a match! ${card.name} wants to meet too 🎉`, tone: "match" }
+      : { id: Date.now(), emoji: "📨", text: `Match request sent to ${card.name}. We’ll notify you if they match back.`, tone: "pending" };
+    setNotifs((prev) => [notif, ...prev]);
+    setUnread((u) => u + 1);
+  }
+  function openBell() {
+    setBellOpen((o) => !o);
+    if (!bellOpen) setUnread(0);
+  }
+
+  const visibleCards = useMemo(
+    () => (cards ?? []).filter((c) => !passed.has(c.id)),
+    [cards, passed],
+  );
+
+  if (!ready) return null;
+
+  // ---- Jury login gate ----
+  if (!session) {
+    return (
+      <>
+        <DemoHeader />
+        <main className="shell">
+          <aside className="aside">
+            <div className="eyebrow">✳ For the jury</div>
+            <h1>
+              No sign-up
+              <br />
+              needed — <em>just enter.</em>
+            </h1>
+            <p>
+              This is the one-tap test account from the spec. Credentials are
+              pre-filled; click to enter and explore the full flow without
+              creating anything.
+            </p>
+          </aside>
+          <section className="app">
+            <div className="step">
+              <h2>Test account</h2>
+              <p className="sub">Pre-placed credentials for reviewers.</p>
+              <div className="summary">
+                <div className="summaryline">
+                  <span>Email</span>
+                  <b>{TEST_IDENTITY.email}</b>
+                </div>
+                <div className="summaryline">
+                  <span>Password</span>
+                  <b>••••••• (test)</b>
+                </div>
+                <div className="summaryline">
+                  <span>Room</span>
+                  <b>Isolated demo room</b>
+                </div>
+              </div>
+              <div className="footer">
+                <button className="continue" onClick={enterAsJury}>
+                  Enter as Jury Test →
+                </button>
+                <div className="hint">No real account is created in this demo.</div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </>
+    );
+  }
+
+  // ---- Discovery feed ----
+  if (step === 5) {
+    return (
+      <>
+        <DemoHeader
+          session={session}
+          onSignOut={signOut}
+          unread={unread}
+          bellOpen={bellOpen}
+          onBell={openBell}
+          notifs={notifs}
+        />
+        <main className="feedshell">
+          <div className="feedbar">
+            <div>
+              <h2 className="feedtitle">People who fit your plan</h2>
+              <p className="sub">
+                {visibleCards.filter((c) => c.hasMatch).length} can meet · computed live from your {days.length}{" "}
+                day{days.length === 1 ? "" : "s"}
+              </p>
+            </div>
+            <button className="navbtn" onClick={restart}>
+              New search ↻
+            </button>
+          </div>
+
+          <div className="feed">
+            {visibleCards.map((c) => (
+              <article className="pcard" key={c.id}>
+                <div className="pcard-top">
+                  <div className="avatar">{c.emoji}</div>
+                  <div className="pcard-id">
+                    <strong>
+                      {c.name}, {c.age}
+                    </strong>
+                    <span className="pcard-area">📍 {c.areaLabels.join(" · ")}</span>
+                  </div>
+                  {c.hasMatch ? (
+                    <span className="fitbadge">You both fit</span>
+                  ) : (
+                    <span className="fitbadge off">{REASON_TEXT[c.reason ?? ""] ?? "No overlap yet"}</span>
+                  )}
+                </div>
+
+                <p className="pcard-bio">{c.bio}</p>
+                <div className="avail">🗓️ {c.availabilityLabel}</div>
+
+                {c.sharedActivities.length > 0 && (
+                  <div className="tagrow">
+                    {c.sharedActivities.map((a) => (
+                      <span className="tag" key={a}>
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {c.slots.length > 0 && (
+                  <div className="slots">
+                    {c.slots.map((s, i) => (
+                      <div className="slot" key={i}>
+                        <b>{formatSlot(s.startsAt)}</b>
+                        <span>
+                          {s.activityLabel} · up to ${Math.round(s.budgetCeilingCents / 100)}
+                          {s.billStatus === "needs_discussion" ? " · split TBD" : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="pcard-actions">
+                  <button className="passbtn" onClick={() => pass(c)}>
+                    Pass
+                  </button>
+                  <button className={`likebtn${liked.has(c.id) ? " on" : ""}`} onClick={() => like(c)}>
+                    {liked.has(c.id) ? "♥ Liked" : "♡ Like"}
+                  </button>
+                  <button
+                    className="matchbtn"
+                    disabled={!c.hasMatch || matched.has(c.id)}
+                    onClick={() => sendMatch(c)}
+                  >
+                    {matched.has(c.id) ? "Match sent ✓" : "Send match"}
+                  </button>
+                </div>
+              </article>
+            ))}
+
+            {visibleCards.length === 0 && (
+              <div className="note">
+                No more profiles. Start a new search with different days, area, or budget.
+              </div>
+            )}
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  // ---- Onboarding wizard ----
   return (
     <>
-      <header>
-        <div className="logo">
-          <Link href="/" style={{ textDecoration: "none" }}>
-            both<span className="g">free</span>
-            <span className="dot">.</span>
-          </Link>
-        </div>
-        <nav>
-          <button className="navbtn" onClick={restart}>
-            Start over ↗
-          </button>
-        </nav>
-      </header>
-
+      <DemoHeader
+        session={session}
+        onSignOut={signOut}
+        unread={unread}
+        bellOpen={bellOpen}
+        onBell={openBell}
+        notifs={notifs}
+      />
       <main className="shell">
         <aside className="aside">
-          <div className="eyebrow">✳ Interactive demo</div>
+          <div className="eyebrow">✳ Build your plan</div>
           <h1>
-            Your next
+            Tell us when
             <br />
-            real-life moment
-            <br />
-            <em>starts here.</em>
+            you’re <em>free.</em>
           </h1>
           <p>
-            Make your choices and BothFree’s server computes a real plan against a
-            seeded partner, Alex. No account, no AI — just overlapping free time.
+            Pick your days, times, and vibe. Then scroll a feed of people and see
+            exactly when you both have time — computed on the server, no AI.
           </p>
         </aside>
 
@@ -158,7 +375,7 @@ export default function DemoPage() {
             <button className="back" onClick={() => step > 0 && setStep(step - 1)} aria-label="Previous step">
               ←
             </button>
-            <span className="pill">{step === 5 ? "YOUR PLAN" : `STEP ${Math.min(step + 1, 5)} OF 5`}</span>
+            <span className="pill">{`STEP ${step + 1} OF 5`}</span>
           </div>
           <div className="progress">
             {Array.from({ length: 5 }, (_, i) => (
@@ -169,14 +386,10 @@ export default function DemoPage() {
           {step === 0 && (
             <div className="step">
               <h2>What brings you here? ✨</h2>
-              <p className="sub">Choose how you’d like to connect.</p>
+              <p className="sub">Friend and date are always kept separate.</p>
               <div className="cards">
                 {MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    className={`choice ${mode === m.id ? "sel" : ""}`}
-                    onClick={() => setMode(m.id)}
-                  >
+                  <button key={m.id} className={`choice ${mode === m.id ? "sel" : ""}`} onClick={() => setMode(m.id)}>
                     <span className="emoji">{m.emoji}</span>
                     <strong>{m.title}</strong>
                     <small>{m.desc}</small>
@@ -189,31 +402,12 @@ export default function DemoPage() {
           {step === 1 && (
             <div className="step">
               <h2>When are you free? 📅</h2>
-              <p className="sub">Pick a few days and the times that work for you.</p>
-              <div className="sectionlabel">Your next 7 days</div>
-              <div className="days">
-                {next7.map((d) => {
-                  const key = dateKey(d);
-                  return (
-                    <button
-                      key={key}
-                      className={`day ${days.includes(key) ? "sel" : ""}`}
-                      onClick={() => toggle(days, key, setDays)}
-                    >
-                      {WEEKDAYS[(d.getDay() + 6) % 7]}
-                      <b>{d.getDate()}</b>
-                    </button>
-                  );
-                })}
-              </div>
+              <p className="sub">Pick single days or a whole range — any month.</p>
+              <MonthCalendar selected={days} onChange={setDays} />
               <div className="sectionlabel">Preferred time of day</div>
               <div className="times">
                 {(Object.keys(TIME_BANDS) as TimeBand[]).map((t) => (
-                  <button
-                    key={t}
-                    className={`chip ${times.includes(t) ? "sel" : ""}`}
-                    onClick={() => toggle(times, t, setTimes)}
-                  >
+                  <button key={t} className={`chip ${times.includes(t) ? "sel" : ""}`} onClick={() => toggle(times, t, setTimes)}>
                     {TIME_BANDS[t].emoji} {t}
                   </button>
                 ))}
@@ -224,22 +418,44 @@ export default function DemoPage() {
           {step === 2 && (
             <div className="step">
               <h2>What’s your kind of fun? 🎈</h2>
-              <p className="sub">Pick up to 3 activities. {activityIds.length}/3 selected.</p>
+              <p className="sub">Pick what you enjoy, or add your own.</p>
               <div className="cards">
                 {ACTIVITIES.map((a) => (
                   <button
                     key={a.id}
-                    className={`choice ${activityIds.includes(a.id) ? "sel" : ""}`}
-                    onClick={() => toggle(activityIds, a.id, setActivityIds, 3)}
+                    className={`choice ${presets.includes(a.id) ? "sel" : ""}`}
+                    onClick={() => toggle(presets, a.id, setPresets)}
                   >
                     <span className="emoji">{a.emoji}</span>
                     <strong>
                       {a.label}
-                      {activityIds.includes(a.id) ? " ✓" : ""}
+                      {presets.includes(a.id) ? " ✓" : ""}
                     </strong>
                   </button>
                 ))}
               </div>
+              <div className="sectionlabel">Add your own</div>
+              <div className="customrow">
+                <input
+                  className="custominput"
+                  placeholder="e.g. Pottery class, Sunset picnic…"
+                  value={customDraft}
+                  onChange={(e) => setCustomDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addCustom()}
+                />
+                <button className="addbtn" onClick={addCustom} disabled={!customDraft.trim()}>
+                  Add
+                </button>
+              </div>
+              {customs.length > 0 && (
+                <div className="tagrow">
+                  {customs.map((c) => (
+                    <span className="tag removable" key={c} onClick={() => setCustoms(customs.filter((x) => x !== c))}>
+                      {c} ✕
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -249,11 +465,7 @@ export default function DemoPage() {
               <p className="sub">Choose a preferred New York City area.</p>
               <div className="cards">
                 {AREAS.map((a) => (
-                  <button
-                    key={a.id}
-                    className={`choice ${areaId === a.id ? "sel" : ""}`}
-                    onClick={() => setAreaId(a.id)}
-                  >
+                  <button key={a.id} className={`choice ${areaId === a.id ? "sel" : ""}`} onClick={() => setAreaId(a.id)}>
                     <span className="emoji">{a.emoji}</span>
                     <strong>{a.label}</strong>
                   </button>
@@ -285,55 +497,64 @@ export default function DemoPage() {
             </div>
           )}
 
-          {step === 5 && result && (
-            <div className="step success">
-              <div className="mascot">{result.proposals.length > 0 ? "🌷" : "🤔"}</div>
-              {result.proposals.length > 0 ? (
-                <>
-                  <h2>You and {result.partner.displayName} can meet!</h2>
-                  <p>The server found these real options from your overlapping time.</p>
-                  <div className="summary">
-                    {result.proposals.map((p, i) => (
-                      <div className="summaryline" key={i}>
-                        <span>{p.activityLabel}</span>
-                        <b>
-                          {formatSlot(p.startsAt)} · up to ${Math.round(p.budgetCeilingCents / 100)}
-                          {p.billStatus === "needs_discussion" ? " · split TBD" : ""}
-                        </b>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h2>No shared option yet</h2>
-                  <p>{REASON_TEXT[result.reason ?? ""] ?? "Try adjusting your choices."}</p>
-                </>
-              )}
-              <div className="note">
-                Demo only: this computes against a seeded partner and does not create
-                accounts or save plans to a server.
-              </div>
-            </div>
-          )}
-
           {error && <div className="note">{error}</div>}
 
           <div className="footer">
             <button className="continue" onClick={advance} disabled={!canContinue || loading}>
-              {loading
-                ? "Computing…"
-                : step === 5
-                  ? "Create another plan ↻"
-                  : step === 4
-                    ? "Build my plan ✨"
-                    : "Continue →"}
+              {loading ? "Finding people…" : step === 4 ? "Find people ✨" : "Continue →"}
             </button>
-            <div className="hint">Interactive concept preview · No account needed</div>
+            <div className="hint">Signed in as {session.email} · isolated demo room</div>
           </div>
         </section>
       </main>
     </>
+  );
+}
+
+function DemoHeader(props: {
+  session?: typeof TEST_IDENTITY;
+  onSignOut?: () => void;
+  unread?: number;
+  bellOpen?: boolean;
+  onBell?: () => void;
+  notifs?: Notif[];
+}) {
+  const { session, onSignOut, unread = 0, bellOpen, onBell, notifs = [] } = props;
+  return (
+    <header>
+      <div className="logo">
+        <Link href="/" style={{ textDecoration: "none" }}>
+          both<span className="g">free</span>
+          <span className="dot">.</span>
+        </Link>
+      </div>
+      <nav>
+        {session && onBell && (
+          <div className="bellwrap">
+            <button className="bell" onClick={onBell} aria-label="Notifications">
+              🔔{unread > 0 && <span className="bellcount">{unread}</span>}
+            </button>
+            {bellOpen && (
+              <div className="notifpanel">
+                <strong className="notifhead">Notifications</strong>
+                {notifs.length === 0 && <div className="notifempty">Nothing yet — send a match!</div>}
+                {notifs.map((n) => (
+                  <div className={`notifitem ${n.tone}`} key={n.id}>
+                    <span className="notifemoji">{n.emoji}</span>
+                    <span>{n.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {session && (
+          <button className="navbtn" onClick={onSignOut}>
+            Sign out
+          </button>
+        )}
+      </nav>
+    </header>
   );
 }
 

@@ -360,3 +360,353 @@ nav a {
     display: none;
   }
 }
+
+/* ---- Month calendar (airline-style) ---- */
+.cal {
+  background: #fafbf6;
+  border: 1px solid #e6ebdc;
+  border-radius: 18px;
+  padding: 16px;
+  margin: 10px 0 6px;
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+.cal-nav {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid #e0e6d6;
+  background: #fff;
+  font-size: 18px;
+  line-height: 1;
+}
+.cal-nav:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.cal-weekdays,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+.cal-weekdays span {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #9aa394;
+  padding-bottom: 6px;
+}
+.cal-cell {
+  aspect-ratio: 1 / 1;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: #fff;
+  font-size: 13px;
+  color: #3a4a3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cal-cell.blank {
+  background: transparent;
+  border: 0;
+}
+.cal-cell:disabled {
+  color: #cdd3c6;
+  background: #f4f5ee;
+  cursor: not-allowed;
+}
+.cal-cell.sel {
+  background: #e1f1d3;
+  border-color: #79b84e;
+  color: #2f4a26;
+  font-weight: 700;
+}
+.cal-cell.rangestart {
+  background: #cfe9b8;
+  border-color: #6aa63f;
+}
+.cal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  gap: 10px;
+}
+.rangebtn {
+  border: 1px solid #d9dfd2;
+  background: #fff;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #586458;
+}
+.rangebtn.on {
+  background: #dff0d2;
+  border-color: #77b651;
+  color: #3c5a2a;
+}
+.cal-count {
+  font-size: 12px;
+  color: #9aa394;
+}
+
+/* ---- Custom activity input ---- */
+.customrow {
+  display: flex;
+  gap: 8px;
+}
+.custominput {
+  flex: 1;
+  border: 1px solid #e0e6d6;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
+}
+.addbtn {
+  border: 0;
+  border-radius: 12px;
+  padding: 0 18px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(110deg, #65ac3f, #93cb58);
+}
+.addbtn:disabled {
+  opacity: 0.4;
+}
+.tagrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.tag {
+  background: #edf5e7;
+  border: 1px solid #d7e8c7;
+  color: #4f6b3c;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.tag.removable {
+  cursor: pointer;
+  background: #fff0e6;
+  border-color: #f3d6bd;
+  color: #9a6a3c;
+}
+
+/* ---- Feed ---- */
+.feedshell {
+  max-width: 640px;
+  margin: 10px auto 60px;
+  padding: 0 18px;
+}
+.feedbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 0 18px;
+  gap: 12px;
+}
+.feedtitle {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  margin: 0 0 4px;
+}
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pcard {
+  background: #fffefa;
+  border: 1px solid #eceee3;
+  border-radius: 22px;
+  box-shadow: 0 12px 34px #516c4214;
+  padding: 20px 22px;
+}
+.pcard-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #eef5e6;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+}
+.pcard-id {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.pcard-id strong {
+  font-size: 17px;
+}
+.pcard-area {
+  font-size: 12px;
+  color: #8b9586;
+}
+.fitbadge {
+  background: #e1f1d3;
+  color: #4a7a2c;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 6px 11px;
+  border-radius: 20px;
+  text-align: center;
+}
+.fitbadge.off {
+  background: #f4f1ea;
+  color: #a79b86;
+}
+.pcard-bio {
+  font-size: 14px;
+  color: #5e6b5c;
+  line-height: 1.5;
+  margin: 14px 0 10px;
+}
+.avail {
+  font-size: 13px;
+  color: #6c7a69;
+  font-weight: 600;
+}
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+.slot {
+  background: #f5f8ef;
+  border-radius: 13px;
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.slot b {
+  font-size: 13px;
+  color: #344433;
+}
+.slot span {
+  font-size: 12px;
+  color: #7d8b7a;
+}
+.pcard-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+.passbtn,
+.likebtn {
+  border: 1px solid #e0e6d6;
+  background: #fff;
+  border-radius: 13px;
+  padding: 12px;
+  font-weight: 700;
+  color: #5e6b5c;
+}
+.likebtn.on {
+  background: #ffe9ef;
+  border-color: #f3b9cc;
+  color: #c2457a;
+}
+.matchbtn {
+  border: 0;
+  border-radius: 13px;
+  padding: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(110deg, #65ac3f, #93cb58);
+}
+.matchbtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- Notification bell ---- */
+.bellwrap {
+  position: relative;
+}
+.bell {
+  border: 1px solid #d9dfd2;
+  background: #fff;
+  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+  position: relative;
+}
+.bellcount {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #e5563f;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+}
+.notifpanel {
+  position: absolute;
+  right: 0;
+  top: 52px;
+  width: 300px;
+  background: #fff;
+  border: 1px solid #eceee3;
+  border-radius: 16px;
+  box-shadow: 0 18px 50px #3c573025;
+  padding: 14px;
+  z-index: 20;
+}
+.notifhead {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.notifempty {
+  font-size: 13px;
+  color: #9aa394;
+  padding: 8px 0;
+}
+.notifitem {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.notifitem.match {
+  background: #eef7e4;
+  color: #3c5a2a;
+}
+.notifitem.pending {
+  background: #fff4e4;
+  color: #8b7557;
+}
+.notifemoji {
+  font-size: 18px;
+}
