@@ -1601,3 +1601,48 @@ nav a:hover {
   background: #e6f7f0;
   border: 1px solid #c9ecdc;
 }
+
+/* ---- Friends list ---- */
+.frlist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 620px;
+  margin-bottom: 8px;
+}
+.frow {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+  padding: 14px 16px;
+}
+.frow-id {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.frow-id strong {
+  font-size: 15px;
+}
+.frow-blurb {
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.frow-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.frow-actions .passbtn,
+.frow-actions .matchbtn {
+  padding: 10px 16px;
+  width: auto;
+}

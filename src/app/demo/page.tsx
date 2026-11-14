@@ -23,11 +23,12 @@ import {
   type WithWhom,
 } from "@/lib/demo/trips";
 import { dateOverlap, budgetOverlap, formatOverlap } from "@/lib/travel/overlap";
+import { INCOMING_REQUESTS, FRIEND_SUGGESTIONS, type Person } from "@/lib/demo/friends";
 
 const SESSION_KEY = "bf-demo-session";
 const TEST_IDENTITY = { name: TEST_PROFILE.name, email: "demo@bothfree.app" };
 
-type View = "feed" | "travel" | "plans" | "profile";
+type View = "feed" | "travel" | "friends" | "plans" | "profile";
 type Mode = "invite" | "friendship" | "dating";
 
 interface Notif {
@@ -83,6 +84,11 @@ export default function DemoPage() {
   const [tDest, setTDest] = useState("any");
   const [tStyle, setTStyle] = useState("any");
   const [tWith, setTWith] = useState("any");
+
+  // Friends
+  const [friends, setFriends] = useState<Person[]>([]);
+  const [incoming, setIncoming] = useState<Person[]>(INCOMING_REQUESTS);
+  const [sentFriends, setSentFriends] = useState<Set<string>>(new Set());
 
   // Create modals
   const [createOpen, setCreateOpen] = useState(false);
@@ -155,6 +161,26 @@ export default function DemoPage() {
     } else {
       addNotif({ emoji: "📨", text: `Travel request sent to ${trip.name}. We’ll let you know if they’re in.`, tone: "pending" });
     }
+  }
+
+  function addFriend(p: Person) {
+    if (friends.some((f) => f.id === p.id) || sentFriends.has(p.id)) return;
+    if (p.likesYouBack) {
+      // They accept your request (seeded) — straight to friends.
+      setFriends((prev) => [p, ...prev]);
+      addNotif({ emoji: p.emoji, text: `${p.name} accepted your friend request 🤝`, tone: "match" });
+    } else {
+      setSentFriends((prev) => new Set(prev).add(p.id));
+      addNotif({ emoji: "📨", text: `Friend request sent to ${p.name}.`, tone: "pending" });
+    }
+  }
+  function acceptFriend(p: Person) {
+    setIncoming((prev) => prev.filter((x) => x.id !== p.id));
+    setFriends((prev) => (prev.some((f) => f.id === p.id) ? prev : [p, ...prev]));
+    addNotif({ emoji: p.emoji, text: `You and ${p.name} are now friends 🤝`, tone: "match" });
+  }
+  function declineFriend(p: Person) {
+    setIncoming((prev) => prev.filter((x) => x.id !== p.id));
   }
 
   // The user's most recent posted trip powers the overlap badges in the feed.
@@ -328,6 +354,7 @@ export default function DemoPage() {
           {([
             ["feed", "🧭", "Discover"],
             ["travel", "✈️", "Travel"],
+            ["friends", "🤝", "Friends"],
             ["plans", "🗂️", "My plans"],
             ["profile", "🧑", "Profile"],
           ] as [View, string, string][]).map(([v, icon, label]) => (
@@ -335,6 +362,7 @@ export default function DemoPage() {
               <span className="navicon">{icon}</span>
               {label}
               {v === "plans" && myPlans.length > 0 && <span className="navbadge">{myPlans.length}</span>}
+              {v === "friends" && incoming.length > 0 && <span className="navbadge">{incoming.length}</span>}
             </button>
           ))}
         </nav>
@@ -510,6 +538,63 @@ export default function DemoPage() {
               {visibleTrips.length === 0 && (
                 <div className="note">No trips match these filters. Try widening them, or post your own.</div>
               )}
+            </div>
+          </>
+        )}
+
+        {view === "friends" && (
+          <>
+            <div className="contenthead">
+              <div>
+                <h1 className="pagetitle">Friends</h1>
+                <p className="sub">🔒 Your friends list is private — only you can see it.</p>
+              </div>
+            </div>
+
+            {incoming.length > 0 && (
+              <>
+                <div className="sectionlabel">Friend requests</div>
+                <div className="frlist">
+                  {incoming.map((p) => (
+                    <PersonRow key={p.id} person={p}>
+                      <button className="passbtn" onClick={() => declineFriend(p)}>
+                        Decline
+                      </button>
+                      <button className="matchbtn" onClick={() => acceptFriend(p)}>
+                        Accept
+                      </button>
+                    </PersonRow>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="sectionlabel">Your friends · {friends.length}</div>
+            {friends.length === 0 ? (
+              <div className="note">No friends yet. Accept a request or add someone below.</div>
+            ) : (
+              <div className="frlist">
+                {friends.map((p) => (
+                  <PersonRow key={p.id} person={p}>
+                    <span className="eventbadge">✓ Friends</span>
+                  </PersonRow>
+                ))}
+              </div>
+            )}
+
+            <div className="sectionlabel">People you may know</div>
+            <div className="frlist">
+              {FRIEND_SUGGESTIONS.filter((p) => !friends.some((f) => f.id === p.id)).map((p) => (
+                <PersonRow key={p.id} person={p}>
+                  {sentFriends.has(p.id) ? (
+                    <span className="eventbadge">Requested</span>
+                  ) : (
+                    <button className="matchbtn" onClick={() => addFriend(p)}>
+                      ＋ Add friend
+                    </button>
+                  )}
+                </PersonRow>
+              ))}
             </div>
           </>
         )}
@@ -1272,6 +1357,24 @@ function CreateTripModal({ onClose, onPost }: { onClose: () => void; onPost: (tr
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------------- Friends: person row ---------------- */
+
+function PersonRow({ person, children }: { person: Person; children: React.ReactNode }) {
+  return (
+    <div className="frow">
+      <div className="avatar">{person.emoji}</div>
+      <div className="frow-id">
+        <strong>
+          {person.name}, {person.age}
+          {person.lgbtqFriendly && <span className="rainbowdot" title="LGBTQ+ friendly"> 🏳️‍🌈</span>}
+        </strong>
+        <span className="frow-blurb">{person.blurb}</span>
+      </div>
+      <div className="frow-actions">{children}</div>
     </div>
   );
 }
