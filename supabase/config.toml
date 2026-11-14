@@ -1,0 +1,12 @@
+# Supabase local config for BothFree.
+project_id = "bothfree"
+
+[db]
+major_version = 15
+
+[auth]
+enable_signup = true
+enable_anonymous_sign_ins = true
+
+[storage]
+enabled = true
