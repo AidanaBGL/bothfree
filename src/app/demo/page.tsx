@@ -137,6 +137,17 @@ export default function DemoPage() {
     };
   }, []);
 
+  // Real (registered) accounts don't get the seeded demo chats/requests.
+  useEffect(() => {
+    if (session?.kind === "registered") {
+      setConversations([]);
+      setIncoming([]);
+    } else if (session?.kind === "jury" || session?.kind === "demo") {
+      setConversations(SEED_CONVERSATIONS);
+      setIncoming(INCOMING_REQUESTS);
+    }
+  }, [session?.kind]);
+
   function startSession(identity: typeof TEST_IDENTITY) {
     localStorage.setItem(SESSION_KEY, JSON.stringify(identity));
     setSession(identity);
@@ -295,9 +306,12 @@ export default function DemoPage() {
     addNotif({ emoji: "🚩", text: `Thanks — your report about ${name} was sent to our team.`, tone: "pending" });
   }
 
+  // Registered (real) accounts start clean; jury/demo accounts see seed data.
+  const isDemo = session?.kind !== "registered";
+
   // The user's most recent posted trip powers the overlap badges in the feed.
   const viewerTrip = myTrips[0] ?? null;
-  const allTrips = useMemo(() => [...myTrips, ...DEMO_TRIPS], [myTrips]);
+  const allTrips = useMemo(() => (isDemo ? [...myTrips, ...DEMO_TRIPS] : [...myTrips]), [myTrips, isDemo]);
   const visibleTrips = useMemo(
     () =>
       allTrips.filter(
@@ -312,7 +326,10 @@ export default function DemoPage() {
   const tripDestinations = useMemo(() => Array.from(new Set(DEMO_TRIPS.map((t) => t.destination))), []);
 
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
-  const allPlans = useMemo(() => [...myPlans, ...DEMO_PLANS, ...TEST_PROFILES], [myPlans]);
+  const allPlans = useMemo(
+    () => (isDemo ? [...myPlans, ...DEMO_PLANS, ...TEST_PROFILES] : [...myPlans]),
+    [myPlans, isDemo],
+  );
   const visiblePlans = useMemo(
     () =>
       allPlans.filter(
@@ -590,7 +607,11 @@ export default function DemoPage() {
             <div className="contenthead">
               <div>
                 <h1 className="pagetitle">Discover plans</h1>
-                <p className="sub">{allPlans.length} demo profiles · matching is real — change filters to see it update.</p>
+                <p className="sub">
+                  {isDemo
+                    ? `${allPlans.length} demo profiles · matching is real — change filters to see it update.`
+                    : "People posting when and where they want to meet."}
+                </p>
               </div>
               <button className="newplan compact" onClick={() => setCreateOpen(true)}>
                 <span className="plus">+</span> New plan
@@ -770,19 +791,23 @@ export default function DemoPage() {
             )}
 
             <div className="sectionlabel">People you may know</div>
-            <div className="frlist">
-              {FRIEND_SUGGESTIONS.filter((p) => !friends.some((f) => f.id === p.id)).map((p) => (
-                <PersonRow key={p.id} person={p}>
-                  {sentFriends.has(p.id) ? (
-                    <span className="eventbadge">Requested</span>
-                  ) : (
-                    <button className="matchbtn" onClick={() => addFriend(p)}>
-                      ＋ Add friend
-                    </button>
-                  )}
-                </PersonRow>
-              ))}
-            </div>
+            {isDemo ? (
+              <div className="frlist">
+                {FRIEND_SUGGESTIONS.filter((p) => !friends.some((f) => f.id === p.id)).map((p) => (
+                  <PersonRow key={p.id} person={p}>
+                    {sentFriends.has(p.id) ? (
+                      <span className="eventbadge">Requested</span>
+                    ) : (
+                      <button className="matchbtn" onClick={() => addFriend(p)}>
+                        ＋ Add friend
+                      </button>
+                    )}
+                  </PersonRow>
+                ))}
+              </div>
+            ) : (
+              <div className="note">No suggestions yet — we’ll surface people as the community grows.</div>
+            )}
           </>
         )}
 
@@ -796,6 +821,9 @@ export default function DemoPage() {
             </div>
             <div className={`chatwrap${openChat ? " open" : ""}`}>
               <div className="chatlist">
+                {conversations.length === 0 && (
+                  <div className="note" style={{ margin: 4 }}>No conversations yet. Message a friend or a mutual match.</div>
+                )}
                 {conversations.map((c) => (
                   <button key={c.id} className={`convo${openChat === c.id ? " active" : ""}`} onClick={() => openConversation(c.id)}>
                     <div className="avatar">{c.person.emoji}</div>
