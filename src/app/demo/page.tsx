@@ -28,6 +28,7 @@ import { INCOMING_REQUESTS, FRIEND_SUGGESTIONS, type Person } from "@/lib/demo/f
 import { SEED_CONVERSATIONS, CANNED_REPLIES, type Conversation } from "@/lib/demo/messages";
 import { supabaseConfigured, authSignUp, authVerify, authSignIn, authSignOut, authCurrentUser } from "@/lib/auth/actions";
 import { getUserId, fetchPlans, insertPlan, fetchTrips, insertTrip, fetchMyProfile, type DbProfile } from "@/lib/data/store";
+import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from "@/lib/demo/matchbus";
 
 const SESSION_KEY = "bf-demo-session";
 type AccountKind = "jury" | "demo" | "registered";
@@ -117,6 +118,10 @@ export default function DemoPage() {
   const [dbTrips, setDbTrips] = useState<DemoTrip[]>([]);
   const [dbProfile, setDbProfile] = useState<DbProfile | null>(null);
 
+  // Cross-account match bus (jury ↔ demo persona)
+  const [bus, setBus] = useState<BusPost[]>([]);
+  const [dismissedReq, setDismissedReq] = useState<Set<number>>(new Set());
+
   // Create modals
   const [createOpen, setCreateOpen] = useState(false);
   const [createTripOpen, setCreateTripOpen] = useState(false);
@@ -179,6 +184,29 @@ export default function DemoPage() {
       active = false;
     };
   }, [session?.kind]);
+
+  // Keep the cross-account match bus in sync (live across tabs via `storage`).
+  useEffect(() => {
+    setBus(readBus());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === BUS_KEY) setBus(readBus());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  function postToBus(plan: DemoPlan) {
+    if (isDemo === false) return; // only jury/demo personas use the bus
+    const me: Persona = session?.kind === "jury" ? "jury" : "demo";
+    const info = PERSONAS[me];
+    pushBus({ ts: Date.now(), persona: me, name: info.name, emoji: info.emoji, activityId: plan.activityId, areaId: plan.areaId, whenLabel: plan.whenLabel });
+    const updated = readBus();
+    setBus(updated);
+    const theirs = updated.find((p) => p.persona !== me && p.activityId === plan.activityId && p.areaId === plan.areaId);
+    if (theirs) {
+      addNotif({ emoji: theirs.emoji, text: `It’s a match! ${theirs.name} entered the same plan — ${activityById(plan.activityId)?.label ?? "it"} nearby ✨`, tone: "match" });
+    }
+  }
 
   function startSession(identity: typeof TEST_IDENTITY) {
     localStorage.setItem(SESSION_KEY, JSON.stringify(identity));
@@ -368,6 +396,10 @@ export default function DemoPage() {
     [myPlans, isDemo, dbMode, dbPlans],
   );
   const myPlansList = dbMode ? dbPlans.filter((p) => p.ownerId === uid) : myPlans;
+
+  // Incoming requests from the OTHER demo persona (jury ↔ user).
+  const persona: Persona = session?.kind === "jury" ? "jury" : "demo";
+  const matchRequests = isDemo ? bus.filter((p) => p.persona !== persona && !dismissedReq.has(p.ts)) : [];
   const visiblePlans = useMemo(
     () =>
       allPlans.filter(
@@ -655,6 +687,45 @@ export default function DemoPage() {
                 <span className="plus">+</span> New plan
               </button>
             </div>
+
+            {matchRequests.length > 0 && (
+              <div className="matchreqs">
+                <div className="sectionlabel" style={{ marginTop: 0 }}>💚 Match requests</div>
+                {matchRequests.map((p) => {
+                  const mutual = bus.some(
+                    (m) => m.persona === persona && m.activityId === p.activityId && m.areaId === p.areaId,
+                  );
+                  return (
+                    <div className="frow" key={p.ts}>
+                      <div className="avatar">{p.emoji}</div>
+                      <div className="frow-id">
+                        <strong>
+                          {p.name}
+                          {mutual && <span className="overlapbadge" style={{ marginLeft: 8 }}>✓ same plan</span>}
+                        </strong>
+                        <span className="frow-blurb">
+                          Wants: {activityById(p.activityId)?.label} · {areaById(p.areaId)?.label} · {p.whenLabel}
+                        </span>
+                      </div>
+                      <div className="frow-actions">
+                        <button className="passbtn" onClick={() => setDismissedReq((prev) => new Set(prev).add(p.ts))}>
+                          Dismiss
+                        </button>
+                        <button
+                          className="matchbtn"
+                          onClick={() => {
+                            setDismissedReq((prev) => new Set(prev).add(p.ts));
+                            addNotif({ emoji: p.emoji, text: `It’s a match! You and ${p.name} are set for ${activityById(p.activityId)?.label ?? "a plan"} 🎉`, tone: "match" });
+                          }}
+                        >
+                          Accept
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="filters">
               <label className="filter">
@@ -973,6 +1044,7 @@ export default function DemoPage() {
               if (saved) setDbPlans((prev) => [saved, ...prev]);
             } else {
               setMyPlans((prev) => [plan, ...prev]);
+              postToBus(plan);
             }
             setCreateOpen(false);
             setView("plans");
