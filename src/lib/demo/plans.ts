@@ -16,6 +16,8 @@ export interface UserProfile {
   bio: string;
   interestIds: string[];
   areaId: string;
+  /** Opt-in, positive signal that this person keeps a welcoming, inclusive space. */
+  lgbtqFriendly: boolean;
 }
 
 export const TEST_PROFILE: UserProfile = {
@@ -26,6 +28,7 @@ export const TEST_PROFILE: UserProfile = {
   bio: "New-ish to the city and always up for coffee, a gallery, or a long walk by the water. Here to meet genuine people and actually make plans — not just text forever.",
   interestIds: ["coffee", "walk", "arts", "music"],
   areaId: "manhattan",
+  lgbtqFriendly: true,
 };
 
 export type DateTag = "weekday" | "weekend";
@@ -44,6 +47,8 @@ export interface DemoPlan {
   budgetLabel: string;
   note: string;
   likesYouBack: boolean;
+  /** Opt-in, positive "welcoming space" signal shown as a badge. */
+  lgbtqFriendly?: boolean;
 }
 
 export const DEMO_PLANS: DemoPlan[] = [
@@ -59,6 +64,7 @@ export const DEMO_PLANS: DemoPlan[] = [
     budgetLabel: "Under $20",
     note: "Looking for a chill coffee + bookshop morning. Good conversation over good espresso.",
     likesYouBack: true,
+    lgbtqFriendly: true,
   },
   {
     id: "madina",
@@ -72,6 +78,7 @@ export const DEMO_PLANS: DemoPlan[] = [
     budgetLabel: "$20–40",
     note: "Live jazz downtown — who's in? Love meeting people who actually listen.",
     likesYouBack: true,
+    lgbtqFriendly: true,
   },
   {
     id: "sam",
@@ -85,6 +92,7 @@ export const DEMO_PLANS: DemoPlan[] = [
     budgetLabel: "Free",
     note: "Morning run then coffee. All paces welcome — it's really about the company.",
     likesYouBack: true,
+    lgbtqFriendly: true,
   },
   {
     id: "daniyar",
@@ -111,6 +119,7 @@ export const DEMO_PLANS: DemoPlan[] = [
     budgetLabel: "$20–40",
     note: "Museum afternoon — a new exhibit just opened and I'd love company.",
     likesYouBack: false,
+    lgbtqFriendly: true,
   },
   {
     id: "noah",

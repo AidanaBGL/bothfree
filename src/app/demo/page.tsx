@@ -36,6 +36,7 @@ export default function DemoPage() {
   const [suPassword, setSuPassword] = useState("");
   const [suDob, setSuDob] = useState("");
   const [suGender, setSuGender] = useState("");
+  const [suFriendly, setSuFriendly] = useState(false);
   const [suTerms, setSuTerms] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -233,6 +234,10 @@ export default function DemoPage() {
                     <option value="self">Prefer to self-describe</option>
                     <option value="prefer_not">Prefer not to say</option>
                   </select>
+                </label>
+                <label className="check">
+                  <input type="checkbox" checked={suFriendly} onChange={(e) => setSuFriendly(e.target.checked)} />
+                  <span>Show an “🏳️‍🌈 LGBTQ+ friendly” badge on my profile — tell others my space is welcoming (optional).</span>
                 </label>
                 <label className="check">
                   <input type="checkbox" checked={suTerms} onChange={(e) => setSuTerms(e.target.checked)} />
@@ -472,7 +477,10 @@ function PlanCard(props: {
 
       <p className="pcard-bio">{plan.note}</p>
       <div className="avail">💸 {plan.budgetLabel}</div>
-      {premium && !mine && plan.likesYouBack && <div className="likesyou">♥ Likes you back</div>}
+      <div className="badgerow">
+        {plan.lgbtqFriendly && <span className="rainbowbadge">🏳️‍🌈 LGBTQ+ friendly</span>}
+        {premium && !mine && plan.likesYouBack && <span className="likesyou">♥ Likes you back</span>}
+      </div>
 
       {!mine && (
         <div className="pcard-actions">
@@ -572,6 +580,11 @@ function ProfileView({ session }: { session: typeof TEST_IDENTITY }) {
           <span className="eventbadge">Verified · demo</span>
         </div>
         <p className="pcard-bio">{p.bio}</p>
+        {p.lgbtqFriendly && (
+          <div className="badgerow">
+            <span className="rainbowbadge">🏳️‍🌈 LGBTQ+ friendly</span>
+          </div>
+        )}
         <div className="sectionlabel">Interests</div>
         <div className="tagrow">
           {p.interestIds.map((id) => (
