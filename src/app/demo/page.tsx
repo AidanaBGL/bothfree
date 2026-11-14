@@ -29,6 +29,7 @@ import { SEED_CONVERSATIONS, CANNED_REPLIES, type Conversation } from "@/lib/dem
 import { supabaseConfigured, authSignUp, authVerify, authSignIn, authSignOut, authCurrentUser } from "@/lib/auth/actions";
 import { getUserId, fetchPlans, insertPlan, fetchTrips, insertTrip, fetchMyProfile, type DbProfile } from "@/lib/data/store";
 import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from "@/lib/demo/matchbus";
+import { SPARK_QUESTIONS } from "@/lib/demo/sparkQuestions";
 
 const SESSION_KEY = "bf-demo-session";
 type AccountKind = "jury" | "demo" | "registered";
@@ -39,7 +40,7 @@ interface Session {
 }
 const TEST_IDENTITY: Session = { name: TEST_PROFILE.name, email: "demo@bothfree.app", kind: "demo" };
 
-type View = "feed" | "travel" | "friends" | "messages" | "plans" | "profile";
+type View = "feed" | "travel" | "friends" | "messages" | "spark" | "plans" | "profile";
 type Mode = "invite" | "friendship" | "dating";
 
 interface Notif {
@@ -622,6 +623,7 @@ export default function DemoPage() {
             ["travel", "✈️", "Travel"],
             ["friends", "🤝", "Friends"],
             ["messages", "💬", "Messages"],
+            ["spark", "✨", "Spark"],
             ["plans", "🗂️", "My plans"],
             ["profile", "🧑", "Profile"],
           ] as [View, string, string][]).map(([v, icon, label]) => (
@@ -631,6 +633,7 @@ export default function DemoPage() {
               {v === "plans" && myPlansList.length > 0 && <span className="navbadge">{myPlansList.length}</span>}
               {v === "friends" && incoming.length > 0 && <span className="navbadge">{incoming.length}</span>}
               {v === "messages" && totalUnread > 0 && <span className="navbadge">{totalUnread}</span>}
+              {v === "spark" && !premium && <span className="navbadge pro">PRO</span>}
             </button>
           ))}
         </nav>
@@ -1028,6 +1031,8 @@ export default function DemoPage() {
           </>
         )}
 
+        {view === "spark" && <SparkView premium={premium} onUnlock={() => setPremium(true)} />}
+
         {view === "profile" && <ProfileView session={session} demo={isDemo} profile={dbProfile} />}
       </main>
 
@@ -1211,6 +1216,97 @@ function HelperPanel({ plan }: { plan: DemoPlan }) {
       </div>
       <div className="helper-foot">Suggestions are rule-based from what you share — not AI.</div>
     </div>
+  );
+}
+
+/* ---------------- Spark (premium conversation cards) ---------------- */
+
+function shuffleDeck(n: number): number[] {
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function SparkView({ premium, onUnlock }: { premium: boolean; onUnlock: () => void }) {
+  const [order, setOrder] = useState<number[]>(() => shuffleDeck(SPARK_QUESTIONS.length));
+  const [idx, setIdx] = useState(0);
+
+  if (!premium) {
+    return (
+      <>
+        <div className="contenthead">
+          <div>
+            <h1 className="pagetitle">Spark ✨</h1>
+            <p className="sub">Heartfelt cards to really get to know each other.</p>
+          </div>
+        </div>
+        <div className="sparklock">
+          <div className="sparkpreview">
+            <div className="sparkcard small">
+              <span className="sparknum">01</span>
+              <p>{SPARK_QUESTIONS[0]}</p>
+            </div>
+            <div className="sparkcard small blurred">
+              <p>{SPARK_QUESTIONS[1]}</p>
+            </div>
+            <div className="sparkcard small blurred">
+              <p>{SPARK_QUESTIONS[2]}</p>
+            </div>
+          </div>
+          <div className="locked" style={{ maxWidth: 420 }}>
+            <strong>✨ Premium feature</strong>
+            <p>
+              Unlock 50 deep, playful questions that spark real conversation and help you
+              get closer — perfect for a first date or a brand-new friend.
+            </p>
+            <button className="matchbtn" onClick={onUnlock}>
+              Unlock Premium (test)
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const q = SPARK_QUESTIONS[order[idx]];
+  return (
+    <>
+      <div className="contenthead">
+        <div>
+          <h1 className="pagetitle">Spark ✨</h1>
+          <p className="sub">
+            Card {idx + 1} of {SPARK_QUESTIONS.length} · draw a card and answer it together.
+          </p>
+        </div>
+      </div>
+      <div className="sparkplay">
+        <div className="sparkcard big">
+          <span className="sparknum">{String(order[idx] + 1).padStart(2, "0")} / {SPARK_QUESTIONS.length}</span>
+          <p>{q}</p>
+        </div>
+        <div className="sparkbtns">
+          <button
+            className="passbtn"
+            onClick={() => {
+              setOrder(shuffleDeck(SPARK_QUESTIONS.length));
+              setIdx(0);
+            }}
+          >
+            🔀 Shuffle
+          </button>
+          <button
+            className="continue"
+            style={{ width: "auto", padding: "14px 28px" }}
+            onClick={() => setIdx((i) => (i + 1) % SPARK_QUESTIONS.length)}
+          >
+            Next card →
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
