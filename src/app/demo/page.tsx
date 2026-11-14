@@ -3,48 +3,16 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { MonthCalendar } from "@/components/MonthCalendar";
-import { ACTIVITIES, AREAS, TIME_BANDS, type TimeBand } from "@/lib/reference/catalog";
+import { TimeSlotTable } from "@/components/TimeSlotTable";
+import { ACTIVITIES, AREAS, activityById, areaById } from "@/lib/reference/catalog";
 import { buildDateHelper } from "@/lib/dateideas/conversation";
-
-type Mode = "invite" | "friendship" | "dating";
+import { DEMO_PLANS, TEST_PROFILE, type DemoPlan, type DateTag } from "@/lib/demo/plans";
 
 const SESSION_KEY = "bf-demo-session";
-const TEST_IDENTITY = { name: "Guest", email: "demo@bothfree.app" };
+const TEST_IDENTITY = { name: TEST_PROFILE.name, email: "demo@bothfree.app" };
 
-const MODES: { id: Mode; emoji: string; title: string; desc: string }[] = [
-  { id: "invite", emoji: "💌", title: "Invite someone I know", desc: "Make that “we should meet” happen." },
-  { id: "friendship", emoji: "🌼", title: "Find a new friend", desc: "Find your people and make plans." },
-  { id: "dating", emoji: "💗", title: "Find a date", desc: "Meet someone with shared free time." },
-];
+type View = "feed" | "plans" | "profile";
 
-const REASON_TEXT: Record<string, string> = {
-  no_shared_time: "No shared time with your days yet",
-  no_shared_activities: "No activities in common",
-  no_shared_area: "Different part of the city",
-  no_option_within_budget: "Outside your budget",
-};
-
-interface Slot {
-  startsAt: string;
-  activityLabel: string;
-  budgetCeilingCents: number;
-  billStatus: string;
-}
-interface Card {
-  id: string;
-  name: string;
-  emoji: string;
-  age: number;
-  bio: string;
-  availabilityLabel: string;
-  areaLabels: string[];
-  likesYouBack: boolean;
-  hasMatch: boolean;
-  reason: string | null;
-  sharedActivities: string[];
-  sharedActivityIds: string[];
-  slots: Slot[];
-}
 interface Notif {
   id: number;
   emoji: string;
@@ -56,33 +24,33 @@ export default function DemoPage() {
   const [session, setSession] = useState<typeof TEST_IDENTITY | null>(null);
   const [ready, setReady] = useState(false);
 
-  // Onboarding state
-  const [step, setStep] = useState(0);
-  const [mode, setMode] = useState<Mode | "">("");
-  const [days, setDays] = useState<string[]>([]);
-  const [times, setTimes] = useState<TimeBand[]>([]);
-  const [presets, setPresets] = useState<string[]>([]);
-  const [customs, setCustoms] = useState<string[]>([]);
-  const [customDraft, setCustomDraft] = useState("");
-  const [areaId, setAreaId] = useState("");
-  const [budget, setBudget] = useState(60);
+  // Login fields, pre-filled with demo credentials.
+  const [email, setEmail] = useState(TEST_IDENTITY.email);
+  const [password, setPassword] = useState("bothfree-demo");
 
-  // Feed state
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [cards, setCards] = useState<Card[] | null>(null);
-  const [liked, setLiked] = useState<Set<string>>(new Set());
-  const [matched, setMatched] = useState<Set<string>>(new Set());
-  const [passed, setPassed] = useState<Set<string>>(new Set());
-
-  // Notifications
+  // App state
+  const [view, setView] = useState<View>("feed");
+  const [premium, setPremium] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [unread, setUnread] = useState(0);
   const [bellOpen, setBellOpen] = useState(false);
 
-  // Premium (Test mode) + date helper
-  const [premium, setPremium] = useState(false);
+  // Feed interactions
+  const [requested, setRequested] = useState<Set<string>>(new Set());
+  const [liked, setLiked] = useState<Set<string>>(new Set());
+  const [passed, setPassed] = useState<Set<string>>(new Set());
   const [helperFor, setHelperFor] = useState<string | null>(null);
+
+  // Filters
+  const [fDate, setFDate] = useState<"any" | DateTag>("any");
+  const [fArea, setFArea] = useState("any");
+  const [fEvent, setFEvent] = useState("any");
+
+  // Plans the user posts, newest first
+  const [myPlans, setMyPlans] = useState<DemoPlan[]>([]);
+
+  // Create modal
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -94,10 +62,6 @@ export default function DemoPage() {
     setReady(true);
   }, []);
 
-  // Login form fields, pre-filled with demo credentials.
-  const [email, setEmail] = useState(TEST_IDENTITY.email);
-  const [password, setPassword] = useState("bothfree-demo");
-
   function signIn() {
     const identity = { name: TEST_IDENTITY.name, email: email.trim() || TEST_IDENTITY.email };
     localStorage.setItem(SESSION_KEY, JSON.stringify(identity));
@@ -106,92 +70,11 @@ export default function DemoPage() {
   function signOut() {
     localStorage.removeItem(SESSION_KEY);
     setSession(null);
-    restart();
+    setView("feed");
   }
 
-  const totalActivities = presets.length + customs.length;
-  const canContinue =
-    (step === 0 && !!mode) ||
-    (step === 1 && days.length > 0 && times.length > 0) ||
-    (step === 2 && totalActivities > 0) ||
-    (step === 3 && !!areaId) ||
-    step === 4 ||
-    step === 5;
-
-  function toggle<T>(list: T[], value: T, setter: (v: T[]) => void, max = 99) {
-    if (list.includes(value)) setter(list.filter((x) => x !== value));
-    else if (list.length < max) setter([...list, value]);
-  }
-
-  function addCustom() {
-    const v = customDraft.trim();
-    if (v && !customs.includes(v) && customs.length < 3) setCustoms([...customs, v]);
-    setCustomDraft("");
-  }
-
-  async function loadFeed() {
-    setLoading(true);
-    setError(null);
-    try {
-      const activityIds = [...presets, ...customs.map((c) => `custom:${c}`)];
-      const res = await fetch("/api/v1/demo/feed", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, days, times, activityIds, areaId, budgetCents: budget * 100 }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data?.error?.message ?? "Something went wrong.");
-        return;
-      }
-      setCards(data.cards);
-      setStep(5);
-    } catch {
-      setError("Could not reach the discovery service.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function advance() {
-    if (step === 4) {
-      void loadFeed();
-      return;
-    }
-    setStep(step + 1);
-  }
-
-  function restart() {
-    setStep(0);
-    setMode("");
-    setDays([]);
-    setTimes([]);
-    setPresets([]);
-    setCustoms([]);
-    setAreaId("");
-    setBudget(60);
-    setCards(null);
-    setLiked(new Set());
-    setMatched(new Set());
-    setPassed(new Set());
-  }
-
-  function like(card: Card) {
-    setLiked((prev) => {
-      const next = new Set(prev);
-      next.has(card.id) ? next.delete(card.id) : next.add(card.id);
-      return next;
-    });
-  }
-  function pass(card: Card) {
-    setPassed((prev) => new Set(prev).add(card.id));
-  }
-  function sendMatch(card: Card) {
-    setMatched((prev) => new Set(prev).add(card.id));
-    const notif: Notif = card.likesYouBack
-      ? { id: Date.now(), emoji: card.emoji, text: `It’s a match! ${card.name} wants to meet too 🎉`, tone: "match" }
-      : { id: Date.now(), emoji: "📨", text: `Match request sent to ${card.name}. We’ll notify you if they match back.`, tone: "pending" };
-    setNotifs((prev) => [notif, ...prev]);
+  function addNotif(n: Omit<Notif, "id">) {
+    setNotifs((prev) => [{ ...n, id: Date.now() + Math.random() }, ...prev]);
     setUnread((u) => u + 1);
   }
   function openBell() {
@@ -199,419 +82,139 @@ export default function DemoPage() {
     if (!bellOpen) setUnread(0);
   }
 
-  const visibleCards = useMemo(
-    () => (cards ?? []).filter((c) => !passed.has(c.id)),
-    [cards, passed],
+  function like(id: string) {
+    setLiked((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function joinPlan(plan: DemoPlan) {
+    setRequested((prev) => new Set(prev).add(plan.id));
+    if (plan.likesYouBack) {
+      addNotif({ emoji: plan.emoji, text: `It’s a match! ${plan.name} is in for ${activityById(plan.activityId)?.label ?? "the plan"} 🎉`, tone: "match" });
+    } else {
+      addNotif({ emoji: "📨", text: `Request sent to ${plan.name}. We’ll let you know if they’re in.`, tone: "pending" });
+    }
+  }
+
+  const allPlans = useMemo(() => [...myPlans, ...DEMO_PLANS], [myPlans]);
+  const visiblePlans = useMemo(
+    () =>
+      allPlans.filter(
+        (p) =>
+          !passed.has(p.id) &&
+          (fDate === "any" || p.dateTag === fDate) &&
+          (fArea === "any" || p.areaId === fArea) &&
+          (fEvent === "any" || p.activityId === fEvent),
+      ),
+    [allPlans, passed, fDate, fArea, fEvent],
   );
 
   if (!ready) return null;
 
-  // ---- Login ----
+  // ===== Login =====
   if (!session) {
     return (
-      <>
-        <DemoHeader />
-        <main className="shell">
-          <aside className="aside">
-            <div className="eyebrow">✳ Welcome back</div>
+      <div className="authwrap">
+        <aside className="authside">
+          <div className="brand">
+            both<span className="g">free</span>
+            <span className="dot">.</span>
+          </div>
+          <div className="authpitch">
+            <div className="eyebrow">✳ More life, less planning</div>
             <h1>
-              Good plans
+              Good plans start
               <br />
-              start when
-              <br />
-              <em>both are free.</em>
+              when <em>both are free.</em>
             </h1>
-            <p>
-              Sign in to pick up where you left off and find your next real-life
-              moment.
-            </p>
-          </aside>
-          <section className="app">
-            <div className="step">
-              <h2>Sign in</h2>
-              <p className="sub">Enter your details to continue.</p>
-              <form
-                className="loginform"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  signIn();
-                }}
-              >
-                <label className="field">
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    className="custominput"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
-                  />
-                </label>
-                <label className="field">
-                  <span>Password</span>
-                  <input
-                    type="password"
-                    className="custominput"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password"
-                  />
-                </label>
-                <div className="footer">
-                  <button type="submit" className="continue">
-                    Log in →
-                  </button>
-                  <div className="hint">New here? Create an account</div>
-                </div>
-              </form>
-            </div>
-          </section>
-        </main>
-      </>
-    );
-  }
-
-  // ---- Discovery feed ----
-  if (step === 5) {
-    return (
-      <>
-        <DemoHeader
-          session={session}
-          onSignOut={signOut}
-          unread={unread}
-          bellOpen={bellOpen}
-          onBell={openBell}
-          notifs={notifs}
-          premium={premium}
-          onTogglePremium={() => setPremium((p) => !p)}
-        />
-        <main className="feedshell">
-          <div className="feedbar">
-            <div>
-              <h2 className="feedtitle">People who fit your plan</h2>
-              <p className="sub">
-                {visibleCards.filter((c) => c.hasMatch).length} can meet · computed live from your {days.length}{" "}
-                day{days.length === 1 ? "" : "s"}
-              </p>
-            </div>
-            <button className="navbtn" onClick={restart}>
-              New search ↻
-            </button>
+            <p>Sign in to see who’s planning to meet near you.</p>
           </div>
-
-          {!premium && (cards ?? []).some((c) => c.likesYouBack) && (
-            <button className="upsell" onClick={() => setPremium(true)}>
-              ✨ Someone in your feed already likes you — unlock Premium (test) to see who.
-            </button>
-          )}
-
-          <div className="feed">
-            {visibleCards.map((c) => (
-              <article className="pcard" key={c.id}>
-                <div className="pcard-top">
-                  <div className="avatar">{c.emoji}</div>
-                  <div className="pcard-id">
-                    <strong>
-                      {c.name}, {c.age}
-                    </strong>
-                    <span className="pcard-area">📍 {c.areaLabels.join(" · ")}</span>
-                  </div>
-                  {c.hasMatch ? (
-                    <span className="fitbadge">You both fit</span>
-                  ) : (
-                    <span className="fitbadge off">{REASON_TEXT[c.reason ?? ""] ?? "No overlap yet"}</span>
-                  )}
-                </div>
-
-                <p className="pcard-bio">{c.bio}</p>
-                <div className="avail">🗓️ {c.availabilityLabel}</div>
-                {premium && c.likesYouBack && <div className="likesyou">♥ Likes you back</div>}
-
-                {c.sharedActivities.length > 0 && (
-                  <div className="tagrow">
-                    {c.sharedActivities.map((a) => (
-                      <span className="tag" key={a}>
-                        {a}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {c.slots.length > 0 && (
-                  <div className="slots">
-                    {c.slots.map((s, i) => (
-                      <div className="slot" key={i}>
-                        <b>{formatSlot(s.startsAt)}</b>
-                        <span>
-                          {s.activityLabel} · up to ${Math.round(s.budgetCeilingCents / 100)}
-                          {s.billStatus === "needs_discussion" ? " · split TBD" : ""}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="pcard-actions">
-                  <button className="passbtn" onClick={() => pass(c)}>
-                    Pass
-                  </button>
-                  <button className={`likebtn${liked.has(c.id) ? " on" : ""}`} onClick={() => like(c)}>
-                    {liked.has(c.id) ? "♥ Liked" : "♡ Like"}
-                  </button>
-                  <button
-                    className="matchbtn"
-                    disabled={!c.hasMatch || matched.has(c.id)}
-                    onClick={() => sendMatch(c)}
-                  >
-                    {matched.has(c.id) ? "Match sent ✓" : "Send match"}
-                  </button>
-                </div>
-
-                {c.hasMatch && (
-                  <>
-                    <button
-                      className="helperbtn"
-                      onClick={() => setHelperFor(helperFor === c.id ? null : c.id)}
-                    >
-                      💬 Icebreakers & date ideas{premium ? "" : " · Premium"}
-                    </button>
-                    {helperFor === c.id &&
-                      (premium ? (
-                        <HelperPanel card={c} mode={(mode || "dating") as Mode} />
-                      ) : (
-                        <div className="locked">
-                          <strong>✨ Premium feature</strong>
-                          <p>
-                            Get tailored icebreakers and a first-date plan for {c.name}, based on
-                            what you share — no AI, just smart suggestions.
-                          </p>
-                          <button className="matchbtn" onClick={() => setPremium(true)}>
-                            Switch to Premium (test)
-                          </button>
-                        </div>
-                      ))}
-                  </>
-                )}
-              </article>
-            ))}
-
-            {visibleCards.length === 0 && (
-              <div className="note">
-                No more profiles. Start a new search with different days, area, or budget.
-              </div>
-            )}
-          </div>
-        </main>
-      </>
-    );
-  }
-
-  // ---- Onboarding wizard ----
-  return (
-    <>
-      <DemoHeader
-        session={session}
-        onSignOut={signOut}
-        unread={unread}
-        bellOpen={bellOpen}
-        onBell={openBell}
-        notifs={notifs}
-      />
-      <main className="shell">
-        <aside className="aside">
-          <div className="eyebrow">✳ Build your plan</div>
-          <h1>
-            Tell us when
-            <br />
-            you’re <em>free.</em>
-          </h1>
-          <p>
-            Pick your days, times, and vibe. Then scroll a feed of people and see
-            exactly when you both have time — computed on the server, no AI.
-          </p>
+          <div className="authfoot">Deterministic matching · no AI · New York</div>
         </aside>
-
-        <section className="app">
-          <div className="top">
-            <button className="back" onClick={() => step > 0 && setStep(step - 1)} aria-label="Previous step">
-              ←
-            </button>
-            <span className="pill">{`STEP ${step + 1} OF 5`}</span>
-          </div>
-          <div className="progress">
-            {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className={i <= step ? "on" : ""} />
-            ))}
-          </div>
-
-          {step === 0 && (
-            <div className="step">
-              <h2>What brings you here? ✨</h2>
-              <p className="sub">Friend and date are always kept separate.</p>
-              <div className="cards">
-                {MODES.map((m) => (
-                  <button key={m.id} className={`choice ${mode === m.id ? "sel" : ""}`} onClick={() => setMode(m.id)}>
-                    <span className="emoji">{m.emoji}</span>
-                    <strong>{m.title}</strong>
-                    <small>{m.desc}</small>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 1 && (
-            <div className="step">
-              <h2>When are you free? 📅</h2>
-              <p className="sub">Pick single days or a whole range — any month.</p>
-              <MonthCalendar selected={days} onChange={setDays} />
-              <div className="sectionlabel">Preferred time of day</div>
-              <div className="times">
-                {(Object.keys(TIME_BANDS) as TimeBand[]).map((t) => (
-                  <button key={t} className={`chip ${times.includes(t) ? "sel" : ""}`} onClick={() => toggle(times, t, setTimes)}>
-                    {TIME_BANDS[t].emoji} {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="step">
-              <h2>What’s your kind of fun? 🎈</h2>
-              <p className="sub">Pick what you enjoy, or add your own.</p>
-              <div className="cards">
-                {ACTIVITIES.map((a) => (
-                  <button
-                    key={a.id}
-                    className={`choice ${presets.includes(a.id) ? "sel" : ""}`}
-                    onClick={() => toggle(presets, a.id, setPresets)}
-                  >
-                    <span className="emoji">{a.emoji}</span>
-                    <strong>
-                      {a.label}
-                      {presets.includes(a.id) ? " ✓" : ""}
-                    </strong>
-                  </button>
-                ))}
-              </div>
-              <div className="sectionlabel">Add your own</div>
-              <div className="customrow">
+        <main className="authmain">
+          <div className="authcard">
+            <h2>Sign in</h2>
+            <p className="sub">Enter your details to continue.</p>
+            <form
+              className="loginform"
+              onSubmit={(e) => {
+                e.preventDefault();
+                signIn();
+              }}
+            >
+              <label className="field">
+                <span>Email</span>
                 <input
+                  type="email"
                   className="custominput"
-                  placeholder="e.g. Pottery class, Sunset picnic…"
-                  value={customDraft}
-                  onChange={(e) => setCustomDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addCustom()}
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                 />
-                <button className="addbtn" onClick={addCustom} disabled={!customDraft.trim()}>
-                  Add
-                </button>
-              </div>
-              {customs.length > 0 && (
-                <div className="tagrow">
-                  {customs.map((c) => (
-                    <span className="tag removable" key={c} onClick={() => setCustoms(customs.filter((x) => x !== c))}>
-                      {c} ✕
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="step">
-              <h2>Where should we meet? 📍</h2>
-              <p className="sub">Choose a preferred New York City area.</p>
-              <div className="cards">
-                {AREAS.map((a) => (
-                  <button key={a.id} className={`choice ${areaId === a.id ? "sel" : ""}`} onClick={() => setAreaId(a.id)}>
-                    <span className="emoji">{a.emoji}</span>
-                    <strong>{a.label}</strong>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 4 && (
-            <div className="step">
-              <h2>Let’s set your budget 💸</h2>
-              <p className="sub">Great moments don’t need to cost a fortune.</p>
-              <div className="amount">${budget}</div>
-              <div style={{ textAlign: "center", color: "#9aa394", fontSize: 13 }}>per person, per meet-up</div>
-              <input
-                className="slider"
-                type="range"
-                min={0}
-                max={200}
-                step={5}
-                value={budget}
-                onChange={(e) => setBudget(Number(e.target.value))}
-                aria-label="Budget"
-              />
-              <div className="range">
-                <span>$0</span>
-                <span>$200+</span>
-              </div>
-            </div>
-          )}
-
-          {error && <div className="note">{error}</div>}
-
-          <div className="footer">
-            <button className="continue" onClick={advance} disabled={!canContinue || loading}>
-              {loading ? "Finding people…" : step === 4 ? "Find people ✨" : "Continue →"}
-            </button>
-            <div className="hint">Signed in as {session.email}</div>
+              </label>
+              <label className="field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  className="custominput"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </label>
+              <button type="submit" className="continue">
+                Log in →
+              </button>
+              <div className="hint">New here? Create an account</div>
+            </form>
           </div>
-        </section>
-      </main>
-    </>
-  );
-}
-
-function DemoHeader(props: {
-  session?: typeof TEST_IDENTITY;
-  onSignOut?: () => void;
-  unread?: number;
-  bellOpen?: boolean;
-  onBell?: () => void;
-  notifs?: Notif[];
-  premium?: boolean;
-  onTogglePremium?: () => void;
-}) {
-  const { session, onSignOut, unread = 0, bellOpen, onBell, notifs = [], premium, onTogglePremium } = props;
-  return (
-    <header>
-      <div className="logo">
-        <Link href="/" style={{ textDecoration: "none" }}>
-          both<span className="g">free</span>
-          <span className="dot">.</span>
-        </Link>
+        </main>
       </div>
-      <nav>
-        {session && onTogglePremium && (
-          <button
-            className={`premiumbtn${premium ? " on" : ""}`}
-            onClick={onTogglePremium}
-            title="Test mode — no real charge"
-          >
-            {premium ? "★ Premium · test" : "Try Premium (test)"}
-          </button>
-        )}
-        {session && onBell && (
+    );
+  }
+
+  // ===== App (sidebar layout) =====
+  return (
+    <div className="layout">
+      <aside className="sidebar">
+        <div className="brand">
+          <Link href="/" style={{ textDecoration: "none" }}>
+            both<span className="g">free</span>
+            <span className="dot">.</span>
+          </Link>
+        </div>
+
+        <button className="newplan" onClick={() => setCreateOpen(true)}>
+          <span className="plus">+</span> New plan
+        </button>
+
+        <nav className="navgroup">
+          {([
+            ["feed", "🧭", "Discover"],
+            ["plans", "🗂️", "My plans"],
+            ["profile", "🧑", "Profile"],
+          ] as [View, string, string][]).map(([v, icon, label]) => (
+            <button key={v} className={`navitem${view === v ? " active" : ""}`} onClick={() => setView(v)}>
+              <span className="navicon">{icon}</span>
+              {label}
+              {v === "plans" && myPlans.length > 0 && <span className="navbadge">{myPlans.length}</span>}
+            </button>
+          ))}
+        </nav>
+
+        <div className="side-foot">
           <div className="bellwrap">
-            <button className="bell" onClick={onBell} aria-label="Notifications">
+            <button className="bell" onClick={openBell} aria-label="Notifications">
               🔔{unread > 0 && <span className="bellcount">{unread}</span>}
             </button>
             {bellOpen && (
               <div className="notifpanel">
                 <strong className="notifhead">Notifications</strong>
-                {notifs.length === 0 && <div className="notifempty">Nothing yet — send a match!</div>}
+                {notifs.length === 0 && <div className="notifempty">Nothing yet — join a plan!</div>}
                 {notifs.map((n) => (
                   <div className={`notifitem ${n.tone}`} key={n.id}>
                     <span className="notifemoji">{n.emoji}</span>
@@ -621,29 +224,227 @@ function DemoHeader(props: {
               </div>
             )}
           </div>
-        )}
-        {session && (
-          <button className="navbtn" onClick={onSignOut}>
+          <button
+            className={`premiumbtn${premium ? " on" : ""}`}
+            onClick={() => setPremium((p) => !p)}
+            title="Test mode — no real charge"
+          >
+            {premium ? "★ Premium" : "Try Premium"}
+          </button>
+          <button className="signout" onClick={signOut}>
             Sign out
           </button>
+        </div>
+      </aside>
+
+      <main className="content">
+        {view === "feed" && (
+          <>
+            <div className="contenthead">
+              <div>
+                <h1 className="pagetitle">Discover plans</h1>
+                <p className="sub">People posting when and where they want to meet.</p>
+              </div>
+              <button className="newplan compact" onClick={() => setCreateOpen(true)}>
+                <span className="plus">+</span> New plan
+              </button>
+            </div>
+
+            <div className="filters">
+              <label className="filter">
+                <span>Date</span>
+                <select value={fDate} onChange={(e) => setFDate(e.target.value as typeof fDate)}>
+                  <option value="any">Any time</option>
+                  <option value="weekday">Weekdays</option>
+                  <option value="weekend">Weekends</option>
+                </select>
+              </label>
+              <label className="filter">
+                <span>Location</span>
+                <select value={fArea} onChange={(e) => setFArea(e.target.value)}>
+                  <option value="any">Anywhere</option>
+                  {AREAS.filter((a) => a.id !== "anywhere").map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="filter">
+                <span>Event</span>
+                <select value={fEvent} onChange={(e) => setFEvent(e.target.value)}>
+                  <option value="any">Any event</option>
+                  {ACTIVITIES.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="feed">
+              {visiblePlans.map((p) => (
+                <PlanCard
+                  key={p.id}
+                  plan={p}
+                  premium={premium}
+                  liked={liked.has(p.id)}
+                  requested={requested.has(p.id)}
+                  helperOpen={helperFor === p.id}
+                  mine={myPlans.some((m) => m.id === p.id)}
+                  onLike={() => like(p.id)}
+                  onPass={() => setPassed((prev) => new Set(prev).add(p.id))}
+                  onJoin={() => joinPlan(p)}
+                  onToggleHelper={() => setHelperFor(helperFor === p.id ? null : p.id)}
+                  onUpgrade={() => setPremium(true)}
+                />
+              ))}
+              {visiblePlans.length === 0 && (
+                <div className="note">No plans match these filters. Try widening them, or post your own.</div>
+              )}
+            </div>
+          </>
         )}
-      </nav>
-    </header>
+
+        {view === "plans" && (
+          <>
+            <div className="contenthead">
+              <div>
+                <h1 className="pagetitle">My plans</h1>
+                <p className="sub">Plans you’ve posted for others to join.</p>
+              </div>
+              <button className="newplan compact" onClick={() => setCreateOpen(true)}>
+                <span className="plus">+</span> New plan
+              </button>
+            </div>
+            <div className="feed">
+              {myPlans.length === 0 && (
+                <div className="emptybox">
+                  <div className="emptyemoji">🗓️</div>
+                  <h3>No plans yet</h3>
+                  <p>Post your first plan and people who fit can ask to join.</p>
+                  <button className="continue" style={{ maxWidth: 220 }} onClick={() => setCreateOpen(true)}>
+                    + Create a plan
+                  </button>
+                </div>
+              )}
+              {myPlans.map((p) => (
+                <PlanCard key={p.id} plan={p} premium={premium} liked={false} requested mine onLike={() => {}} onPass={() => {}} onJoin={() => {}} helperOpen={false} onToggleHelper={() => {}} onUpgrade={() => {}} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {view === "profile" && <ProfileView />}
+      </main>
+
+      {createOpen && (
+        <CreatePlanModal
+          onClose={() => setCreateOpen(false)}
+          onPost={(plan) => {
+            setMyPlans((prev) => [plan, ...prev]);
+            setCreateOpen(false);
+            setView("plans");
+            addNotif({ emoji: "✅", text: "Your plan is live. People who fit can now ask to join.", tone: "match" });
+          }}
+        />
+      )}
+    </div>
   );
 }
 
-function HelperPanel({ card, mode }: { card: Card; mode: Mode }) {
-  const helper = useMemo(
-    () =>
-      buildDateHelper({
-        mode,
-        otherName: card.name,
-        otherAge: card.age,
-        areaLabels: card.areaLabels,
-        sharedActivityIds: card.sharedActivityIds,
-      }),
-    [card, mode],
+/* ---------------- Plan card ---------------- */
+
+function PlanCard(props: {
+  plan: DemoPlan;
+  premium: boolean;
+  liked: boolean;
+  requested: boolean;
+  mine: boolean;
+  helperOpen: boolean;
+  onLike: () => void;
+  onPass: () => void;
+  onJoin: () => void;
+  onToggleHelper: () => void;
+  onUpgrade: () => void;
+}) {
+  const { plan, premium, liked, requested, mine, helperOpen, onLike, onPass, onJoin, onToggleHelper, onUpgrade } = props;
+  const activity = activityById(plan.activityId);
+  const area = areaById(plan.areaId);
+
+  return (
+    <article className="pcard">
+      <div className="pcard-top">
+        <div className="avatar">{plan.emoji}</div>
+        <div className="pcard-id">
+          <strong>
+            {plan.name}
+            {!mine && `, ${plan.age}`}
+            {mine && <span className="minetag"> · you</span>}
+          </strong>
+          <span className="pcard-area">
+            📍 {area?.label ?? plan.areaId} · 🗓️ {plan.whenLabel}
+          </span>
+        </div>
+        <span className="eventbadge">
+          {activity?.emoji} {activity?.label}
+        </span>
+      </div>
+
+      <p className="pcard-bio">{plan.note}</p>
+      <div className="avail">💸 {plan.budgetLabel}</div>
+      {premium && !mine && plan.likesYouBack && <div className="likesyou">♥ Likes you back</div>}
+
+      {!mine && (
+        <div className="pcard-actions">
+          <button className="passbtn" onClick={onPass}>
+            Pass
+          </button>
+          <button className={`likebtn${liked ? " on" : ""}`} onClick={onLike}>
+            {liked ? "♥ Liked" : "♡ Like"}
+          </button>
+          <button className="matchbtn" disabled={requested} onClick={onJoin}>
+            {requested ? "Requested ✓" : "I’m in →"}
+          </button>
+        </div>
+      )}
+
+      {!mine && (
+        <>
+          <button className="helperbtn" onClick={onToggleHelper}>
+            💬 Icebreakers & date ideas{premium ? "" : " · Premium"}
+          </button>
+          {helperOpen &&
+            (premium ? (
+              <HelperPanel plan={plan} />
+            ) : (
+              <div className="locked">
+                <strong>✨ Premium feature</strong>
+                <p>Get tailored icebreakers and a first-date plan for {plan.name}, based on what you share — no AI.</p>
+                <button className="matchbtn" onClick={onUpgrade}>
+                  Switch to Premium (test)
+                </button>
+              </div>
+            ))}
+        </>
+      )}
+    </article>
   );
+}
+
+function HelperPanel({ plan }: { plan: DemoPlan }) {
+  const helper = useMemo(() => {
+    const shared = [plan.activityId, ...TEST_PROFILE.interestIds.filter((i) => i !== plan.activityId)];
+    return buildDateHelper({
+      mode: "dating",
+      otherName: plan.name,
+      otherAge: plan.age,
+      selfAge: TEST_PROFILE.age,
+      areaLabels: [areaById(plan.areaId)?.label ?? plan.areaId],
+      sharedActivityIds: shared,
+    });
+  }, [plan]);
   return (
     <div className="helper">
       <div className="helper-sec">
@@ -655,7 +456,7 @@ function HelperPanel({ card, mode }: { card: Card; mode: Mode }) {
         </ul>
       </div>
       <div className="helper-sec">
-        <strong>A good first date</strong>
+        <strong>A good first meet-up</strong>
         <p>{helper.firstDateIdea}</p>
       </div>
       <div className="helper-sec">
@@ -671,13 +472,156 @@ function HelperPanel({ card, mode }: { card: Card; mode: Mode }) {
   );
 }
 
-function formatSlot(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  });
+/* ---------------- Profile ---------------- */
+
+function ProfileView() {
+  const p = TEST_PROFILE;
+  return (
+    <>
+      <div className="contenthead">
+        <h1 className="pagetitle">Profile</h1>
+      </div>
+      <div className="profilecard">
+        <div className="profiletop">
+          <div className="avatar big">{p.emoji}</div>
+          <div>
+            <h2 className="profilename">
+              {p.name}, {p.age}
+            </h2>
+            <div className="pcard-area">📍 {p.city} · {areaById(p.areaId)?.label}</div>
+          </div>
+          <span className="eventbadge">Verified · demo</span>
+        </div>
+        <p className="pcard-bio">{p.bio}</p>
+        <div className="sectionlabel">Interests</div>
+        <div className="tagrow">
+          {p.interestIds.map((id) => (
+            <span className="tag" key={id}>
+              {activityById(id)?.emoji} {activityById(id)?.label}
+            </span>
+          ))}
+        </div>
+        <div className="summary">
+          <div className="summaryline">
+            <span>City</span>
+            <b>{p.city}</b>
+          </div>
+          <div className="summaryline">
+            <span>Preferred area</span>
+            <b>{areaById(p.areaId)?.label}</b>
+          </div>
+          <div className="summaryline">
+            <span>Email</span>
+            <b>{TEST_IDENTITY.email}</b>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------------- Create plan modal ---------------- */
+
+const HOUR_LABELS: Record<number, string> = {};
+for (let h = 0; h < 24; h++) {
+  const period = h < 12 ? "AM" : "PM";
+  const base = h % 12 === 0 ? 12 : h % 12;
+  HOUR_LABELS[h] = `${base}:00 ${period}`;
+}
+
+function CreatePlanModal({ onClose, onPost }: { onClose: () => void; onPost: (plan: DemoPlan) => void }) {
+  const [activity, setActivity] = useState("");
+  const [area, setArea] = useState("");
+  const [days, setDays] = useState<string[]>([]);
+  const [slots, setSlots] = useState<Record<string, number[]>>({});
+  const [budget, setBudget] = useState(40);
+  const [note, setNote] = useState("");
+
+  const hasSlot = Object.values(slots).some((hrs) => hrs.length > 0);
+  const canPost = !!activity && !!area && days.length > 0 && hasSlot;
+
+  function post() {
+    // Earliest selected day that has a slot, and its earliest hour.
+    const dayWithSlot = days.filter((d) => (slots[d] ?? []).length > 0).sort()[0];
+    const hour = Math.min(...(slots[dayWithSlot] ?? [9]));
+    const d = new Date(`${dayWithSlot}T00:00:00`);
+    const weekday = d.getDay();
+    const dateTag: DateTag = weekday === 0 || weekday === 6 ? "weekend" : "weekday";
+    const whenLabel = `${d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · ${HOUR_LABELS[hour]}`;
+    const budgetLabel = budget === 0 ? "Free" : budget <= 20 ? "Under $20" : budget <= 40 ? "$20–40" : `Up to $${budget}`;
+
+    onPost({
+      id: `mine-${Date.now()}`,
+      name: TEST_PROFILE.name,
+      emoji: TEST_PROFILE.emoji,
+      age: TEST_PROFILE.age,
+      activityId: activity,
+      areaId: area,
+      dateTag,
+      whenLabel,
+      budgetLabel,
+      note: note.trim() || `${activityById(activity)?.label} in ${areaById(area)?.label}. Come say hi!`,
+      likesYouBack: false,
+    });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>New plan</h2>
+          <button className="closebtn" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div className="modal-body">
+          <div className="sectionlabel">What do you want to do?</div>
+          <div className="pickrow">
+            {ACTIVITIES.map((a) => (
+              <button key={a.id} className={`chip${activity === a.id ? " sel" : ""}`} onClick={() => setActivity(a.id)}>
+                {a.emoji} {a.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="sectionlabel">Where?</div>
+          <div className="pickrow">
+            {AREAS.filter((a) => a.id !== "anywhere").map((a) => (
+              <button key={a.id} className={`chip${area === a.id ? " sel" : ""}`} onClick={() => setArea(a.id)}>
+                {a.emoji} {a.label}
+              </button>
+            ))}
+          </div>
+          <div className="drawhint">🗺️ Draw your own area on the map — coming next.</div>
+
+          <div className="sectionlabel">Which days?</div>
+          <MonthCalendar selected={days} onChange={setDays} />
+
+          <div className="sectionlabel">Pick times for each day</div>
+          <TimeSlotTable days={days} value={slots} onChange={setSlots} />
+
+          <div className="sectionlabel">Budget per person</div>
+          <div className="amount">${budget}</div>
+          <input className="slider" type="range" min={0} max={200} step={5} value={budget} onChange={(e) => setBudget(Number(e.target.value))} aria-label="Budget" />
+
+          <div className="sectionlabel">A note (optional)</div>
+          <textarea
+            className="custominput"
+            rows={3}
+            placeholder="Say a little about the vibe you're after…"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+        <div className="modal-foot">
+          <button className="passbtn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="continue" style={{ width: "auto", padding: "14px 26px" }} disabled={!canPost} onClick={post}>
+            Post plan ✨
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
