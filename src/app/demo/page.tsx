@@ -25,6 +25,7 @@ import {
 } from "@/lib/demo/trips";
 import { dateOverlap, budgetOverlap, formatOverlap } from "@/lib/travel/overlap";
 import { INCOMING_REQUESTS, FRIEND_SUGGESTIONS, type Person } from "@/lib/demo/friends";
+import { SEED_CONVERSATIONS, CANNED_REPLIES, type Conversation } from "@/lib/demo/messages";
 
 const SESSION_KEY = "bf-demo-session";
 type AccountKind = "jury" | "demo" | "registered";
@@ -35,7 +36,7 @@ interface Session {
 }
 const TEST_IDENTITY: Session = { name: TEST_PROFILE.name, email: "demo@bothfree.app", kind: "demo" };
 
-type View = "feed" | "travel" | "friends" | "plans" | "profile";
+type View = "feed" | "travel" | "friends" | "messages" | "plans" | "profile";
 type Mode = "invite" | "friendship" | "dating";
 
 interface Notif {
@@ -98,6 +99,11 @@ export default function DemoPage() {
   const [friends, setFriends] = useState<Person[]>([]);
   const [incoming, setIncoming] = useState<Person[]>(INCOMING_REQUESTS);
   const [sentFriends, setSentFriends] = useState<Set<string>>(new Set());
+
+  // Messages
+  const [conversations, setConversations] = useState<Conversation[]>(SEED_CONVERSATIONS);
+  const [openChat, setOpenChat] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
 
   // Create modals
   const [createOpen, setCreateOpen] = useState(false);
@@ -201,6 +207,37 @@ export default function DemoPage() {
     setIncoming((prev) => prev.filter((x) => x.id !== p.id));
   }
 
+  function openConversation(id: string) {
+    setOpenChat(id);
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, unread: 0 } : c)));
+  }
+  function sendMessage(id: string) {
+    const text = draft.trim();
+    const convo = conversations.find((c) => c.id === id);
+    if (!text || !convo || convo.blocked) return;
+    setDraft("");
+    const mine = { id: `m-${Date.now()}`, from: "me" as const, text };
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, messages: [...c.messages, mine] } : c)));
+    // Simulate the other person replying shortly after.
+    const reply = CANNED_REPLIES[convo.messages.length % CANNED_REPLIES.length];
+    setTimeout(() => {
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== id || c.blocked) return c;
+          const viewing = openChat === id;
+          return { ...c, messages: [...c.messages, { id: `r-${Date.now()}`, from: "them", text: reply }], unread: viewing ? 0 : c.unread + 1 };
+        }),
+      );
+      addNotif({ emoji: convo.person.emoji, text: `New message from ${convo.person.name}`, tone: "pending" });
+    }, 900);
+  }
+  function toggleBlock(id: string) {
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, blocked: !c.blocked } : c)));
+  }
+  function reportConversation(name: string) {
+    addNotif({ emoji: "🚩", text: `Thanks — your report about ${name} was sent to our team.`, tone: "pending" });
+  }
+
   // The user's most recent posted trip powers the overlap badges in the feed.
   const viewerTrip = myTrips[0] ?? null;
   const allTrips = useMemo(() => [...myTrips, ...DEMO_TRIPS], [myTrips]);
@@ -217,6 +254,7 @@ export default function DemoPage() {
   );
   const tripDestinations = useMemo(() => Array.from(new Set(DEMO_TRIPS.map((t) => t.destination))), []);
 
+  const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
   const allPlans = useMemo(() => [...myPlans, ...DEMO_PLANS, ...TEST_PROFILES], [myPlans]);
   const visiblePlans = useMemo(
     () =>
@@ -417,6 +455,7 @@ export default function DemoPage() {
             ["feed", "🧭", "Discover"],
             ["travel", "✈️", "Travel"],
             ["friends", "🤝", "Friends"],
+            ["messages", "💬", "Messages"],
             ["plans", "🗂️", "My plans"],
             ["profile", "🧑", "Profile"],
           ] as [View, string, string][]).map(([v, icon, label]) => (
@@ -425,6 +464,7 @@ export default function DemoPage() {
               {label}
               {v === "plans" && myPlans.length > 0 && <span className="navbadge">{myPlans.length}</span>}
               {v === "friends" && incoming.length > 0 && <span className="navbadge">{incoming.length}</span>}
+              {v === "messages" && totalUnread > 0 && <span className="navbadge">{totalUnread}</span>}
             </button>
           ))}
         </nav>
@@ -662,6 +702,82 @@ export default function DemoPage() {
                   )}
                 </PersonRow>
               ))}
+            </div>
+          </>
+        )}
+
+        {view === "messages" && (
+          <>
+            <div className="contenthead">
+              <div>
+                <h1 className="pagetitle">Messages</h1>
+                <p className="sub">💬 You can message friends and mutual matches only.</p>
+              </div>
+            </div>
+            <div className={`chatwrap${openChat ? " open" : ""}`}>
+              <div className="chatlist">
+                {conversations.map((c) => (
+                  <button key={c.id} className={`convo${openChat === c.id ? " active" : ""}`} onClick={() => openConversation(c.id)}>
+                    <div className="avatar">{c.person.emoji}</div>
+                    <div className="convo-id">
+                      <strong>{c.person.name}</strong>
+                      <span className="convo-last">{c.blocked ? "Blocked" : c.messages[c.messages.length - 1]?.text}</span>
+                    </div>
+                    {c.unread > 0 && <span className="navbadge">{c.unread}</span>}
+                  </button>
+                ))}
+              </div>
+              <div className="chatthread">
+                {(() => {
+                  const c = conversations.find((x) => x.id === openChat);
+                  if (!c) return <div className="chatempty">Select a conversation to start chatting.</div>;
+                  return (
+                    <>
+                      <div className="chathead">
+                        <button className="chatback" onClick={() => setOpenChat(null)} aria-label="Back">
+                          ←
+                        </button>
+                        <div className="avatar">{c.person.emoji}</div>
+                        <strong>{c.person.name}</strong>
+                        <div className="chathead-actions">
+                          <button className="rangebtn" onClick={() => reportConversation(c.person.name)}>
+                            Report
+                          </button>
+                          <button className="rangebtn" onClick={() => toggleBlock(c.id)}>
+                            {c.blocked ? "Unblock" : "Block"}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="chatbody">
+                        {c.messages.map((m) => (
+                          <div key={m.id} className={`bubble ${m.from}`}>
+                            {m.text}
+                          </div>
+                        ))}
+                        {c.blocked && <div className="chatblocked">You blocked {c.person.name}. New messages are off.</div>}
+                      </div>
+                      <form
+                        className="chatinput"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          sendMessage(c.id);
+                        }}
+                      >
+                        <input
+                          className="custominput"
+                          placeholder={c.blocked ? "Unblock to send messages" : "Write a message…"}
+                          value={draft}
+                          onChange={(e) => setDraft(e.target.value)}
+                          disabled={c.blocked}
+                        />
+                        <button type="submit" className="matchbtn" disabled={c.blocked || !draft.trim()}>
+                          Send
+                        </button>
+                      </form>
+                    </>
+                  );
+                })()}
+              </div>
             </div>
           </>
         )}
