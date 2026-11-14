@@ -5,25 +5,25 @@
    ============================================================ */
 
 :root {
-  --bg: #f5f6fb;
-  --ink: #202438;
-  --muted: #7b8194;
-  --faint: #a0a4b4;
+  --bg: #f7f6f3;
+  --ink: #173e32;
+  --muted: #64776d;
+  --faint: #93a39a;
 
-  --accent: #7255ec;
-  --accent-2: #8f79f4;
-  --accent-soft: #f0ecff;
+  --accent: #245a46;
+  --accent-2: #2f6e54;
+  --accent-soft: #edf2eb;
   --pink: #fa658d;
   --green: #22af80;
   --gold: #dd9b3e;
 
   --panel: #ffffff;
-  --panel-2: #f6f6fb;
-  --line: #e7e8f0;
-  --line-2: #dedbef;
+  --panel-2: #f1f3ee;
+  --line: #dbe3d9;
+  --line-2: #cdd9c9;
 
-  --shadow: 0 16px 42px rgba(36, 39, 77, 0.08);
-  --shadow-soft: 0 6px 18px rgba(36, 39, 77, 0.06);
+  --shadow: 0 16px 42px rgba(24, 62, 50, 0.08);
+  --shadow-soft: 0 6px 18px rgba(24, 62, 50, 0.06);
   --radius: 20px;
 }
 
@@ -37,8 +37,8 @@ body {
   color: var(--ink);
   font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background:
-    radial-gradient(900px 500px at 100% -5%, #efeaff 0%, transparent 55%),
-    radial-gradient(700px 500px at -5% 105%, #e9f3ff 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% -5%, #eef2ea 0%, transparent 55%),
+    radial-gradient(700px 500px at -5% 105%, #eef2ea 0%, transparent 55%),
     var(--bg);
   background-attachment: fixed;
 }
@@ -56,7 +56,7 @@ a {
   color: inherit;
 }
 ::selection {
-  background: rgba(114, 85, 236, 0.2);
+  background: rgba(36, 90, 70, 0.2);
 }
 
 /* ---- Header ---- */
@@ -75,10 +75,11 @@ header {
   letter-spacing: -1.3px;
 }
 .logo span.g {
-  color: var(--accent);
+  color: #7a8c80;
+  font-weight: 500;
 }
 .logo span.dot {
-  color: var(--pink);
+  color: var(--accent);
 }
 nav {
   display: flex;
@@ -157,7 +158,7 @@ nav a:hover {
   font-weight: 800;
   text-decoration: none;
   background: var(--accent);
-  box-shadow: 0 8px 20px rgba(114, 85, 236, 0.28);
+  box-shadow: 0 8px 20px rgba(36, 90, 70, 0.28);
   transition: transform 0.2s, filter 0.2s;
 }
 .cta:hover {
@@ -213,7 +214,7 @@ nav a:hover {
 }
 .progress div {
   height: 5px;
-  background: #e9e8f1;
+  background: #e4eae1;
   border-radius: 20px;
   transition: background 0.4s;
 }
@@ -265,11 +266,11 @@ nav a:hover {
 .choice:hover {
   transform: translateY(-2px);
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(114, 85, 236, 0.07);
+  box-shadow: 0 0 0 3px rgba(36, 90, 70, 0.07);
 }
 .choice.sel {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(114, 85, 236, 0.1);
+  box-shadow: 0 0 0 3px rgba(36, 90, 70, 0.1);
   background: var(--accent-soft);
 }
 .choice .emoji {
@@ -368,7 +369,7 @@ nav a:hover {
 }
 .tag {
   background: var(--accent-soft);
-  border: 1px solid #e3dcff;
+  border: 1px solid #d3e2d6;
   color: var(--accent);
   border-radius: 99px;
   padding: 7px 13px;
@@ -404,8 +405,8 @@ nav a:hover {
 
 /* ---- Summary list ---- */
 .summary {
-  background: #f7f5ff;
-  border: 1px solid #eee9ff;
+  background: #f2f6f0;
+  border: 1px solid #e2ece0;
   border-radius: 18px;
   padding: 20px 22px;
   margin-top: 18px;
@@ -414,7 +415,7 @@ nav a:hover {
   display: flex;
   justify-content: space-between;
   padding: 12px 0;
-  border-bottom: 1px solid #e9e5f7;
+  border-bottom: 1px solid #e2ebe0;
   font-size: 13px;
   gap: 12px;
 }
@@ -452,7 +453,7 @@ nav a:hover {
   color: #fff;
   font-weight: 800;
   background: var(--accent);
-  box-shadow: 0 8px 20px rgba(114, 85, 236, 0.26);
+  box-shadow: 0 8px 20px rgba(36, 90, 70, 0.26);
   transition: transform 0.2s, opacity 0.2s, filter 0.2s;
 }
 .continue:hover {
@@ -769,7 +770,7 @@ nav a:hover {
 .helperbtn {
   width: 100%;
   margin-top: 12px;
-  border: 1px solid #e3dcff;
+  border: 1px solid #d3e2d6;
   background: var(--accent-soft);
   color: var(--accent);
   border-radius: 12px;
@@ -779,7 +780,7 @@ nav a:hover {
 .locked {
   margin-top: 12px;
   background: var(--accent-soft);
-  border: 1px solid #e3dcff;
+  border: 1px solid #d3e2d6;
   border-radius: 16px;
   padding: 16px;
 }
@@ -794,8 +795,8 @@ nav a:hover {
 }
 .helper {
   margin-top: 12px;
-  background: #faf9ff;
-  border: 1px solid #eee9ff;
+  background: #f3f7f2;
+  border: 1px solid #e2ece0;
   border-radius: 16px;
   padding: 16px 18px;
 }
@@ -826,7 +827,7 @@ nav a:hover {
 .helper-foot {
   font-size: 11px;
   color: var(--faint);
-  border-top: 1px solid #eee9ff;
+  border-top: 1px solid #e2ece0;
   padding-top: 10px;
 }
 
@@ -941,10 +942,11 @@ nav a:hover {
   letter-spacing: -1.3px;
 }
 .brand .g {
-  color: var(--accent);
+  color: #7a8c80;
+  font-weight: 500;
 }
 .brand .dot {
-  color: var(--pink);
+  color: var(--accent);
 }
 .authpitch h1 {
   font-size: clamp(32px, 3.4vw, 46px);
@@ -1006,7 +1008,7 @@ nav a:hover {
 .authswitch button.on {
   background: var(--panel);
   color: var(--accent);
-  box-shadow: 0 2px 6px rgba(36, 39, 77, 0.08);
+  box-shadow: 0 2px 6px rgba(24, 62, 50, 0.08);
 }
 .autherror {
   background: #fdecee;
@@ -1069,7 +1071,7 @@ nav a:hover {
   font-weight: 800;
   color: #fff;
   background: var(--accent);
-  box-shadow: 0 8px 18px rgba(114, 85, 236, 0.26);
+  box-shadow: 0 8px 18px rgba(36, 90, 70, 0.26);
 }
 .newplan .plus {
   font-size: 18px;
@@ -1100,7 +1102,7 @@ nav a:hover {
   padding: 12px 13px;
 }
 .navitem:hover {
-  background: #f6f4ff;
+  background: #e8eee6;
   color: var(--ink);
 }
 .navitem.active {
@@ -1274,7 +1276,7 @@ nav a:hover {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(36, 39, 77, 0.38);
+  background: rgba(24, 62, 50, 0.38);
   backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
@@ -1488,4 +1490,23 @@ nav a:hover {
   .twocol {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---- Green-theme refinements (match bothfree-design.html) ---- */
+.aside h1,
+.pagetitle,
+.feedtitle,
+.step h2,
+.authpitch h1,
+.authcard h2,
+.modal-head h2,
+.profilename,
+.emptybox h3 {
+  color: #13211b;
+}
+.navitem {
+  transition: background 0.2s, transform 0.2s, color 0.2s;
+}
+.navitem:hover {
+  transform: translateX(3px);
 }
