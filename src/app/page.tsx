@@ -67,8 +67,9 @@ export default function HomePage() {
               </div>
             </div>
             <div className="note">
-              The server really computes time, area, activity, and budget overlap —
-              no fixtures. Try the interactive demo without creating an account.
+              The matching logic (time, area, activity, budget overlap) is real and
+              deterministic. The one-tap demo runs on seeded test data; sign up to use
+              it with real accounts.
             </div>
           </div>
         </section>

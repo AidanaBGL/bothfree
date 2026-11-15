@@ -62,6 +62,8 @@ export interface DemoTrip {
   lgbtqFriendly?: boolean;
   /** True for trips the signed-in user posted. */
   mine?: boolean;
+  /** Supabase owner id (set when loaded from the database). */
+  ownerId?: string;
 }
 
 export const DEMO_TRIPS: DemoTrip[] = [

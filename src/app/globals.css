@@ -1346,16 +1346,20 @@ nav a:hover {
 }
 
 /* ---- Time-slot table ---- */
+.slotscroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
 .slottable {
-  display: flex;
+  display: inline-flex;
   flex-direction: column;
   gap: 4px;
-  overflow-x: auto;
+  min-width: max-content;
   padding-bottom: 4px;
 }
 .slotrow {
   display: grid;
-  grid-template-columns: 94px repeat(13, minmax(20px, 1fr));
   gap: 4px;
   align-items: center;
 }
@@ -1363,6 +1367,7 @@ nav a:hover {
   font-size: 10px;
   color: var(--faint);
   text-align: center;
+  white-space: nowrap;
 }
 .slotday {
   font-size: 11px;

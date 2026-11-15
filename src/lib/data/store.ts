@@ -51,7 +51,7 @@ export async function fetchTrips(myUid: string | null): Promise<DemoTrip[]> {
     .select("id, owner_id, payload")
     .order("created_at", { ascending: false });
   if (error || !data) return [];
-  return (data as Row[]).map((r) => ({ ...(r.payload as DemoTrip), id: r.id, mine: r.owner_id === myUid }));
+  return (data as Row[]).map((r) => ({ ...(r.payload as DemoTrip), id: r.id, ownerId: r.owner_id, mine: r.owner_id === myUid }));
 }
 
 export async function insertTrip(trip: DemoTrip): Promise<DemoTrip | null> {
@@ -360,6 +360,43 @@ export async function respondMeetingProposal(id: string, accept: boolean): Promi
     .update({ status: accept ? "accepted" : "declined" })
     .eq("id", id);
   return error ? { error: error.message } : {};
+}
+
+// ---- Notifications --------------------------------------------------
+export interface DbNotification {
+  id: string;
+  kind: string;
+  title: string;
+  objectType: string | null;
+  objectId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export async function fetchNotifications(uid: string): Promise<DbNotification[]> {
+  const { data } = await createClient()
+    .from("notifications")
+    .select("id, kind, title, object_type, object_id, read_at, created_at")
+    .eq("user_id", uid)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  return ((data as Record<string, string | null>[] | null) ?? []).map((r) => ({
+    id: r.id as string,
+    kind: r.kind as string,
+    title: r.title as string,
+    objectType: r.object_type,
+    objectId: r.object_id,
+    readAt: r.read_at,
+    createdAt: r.created_at as string,
+  }));
+}
+
+export async function markNotificationsRead(uid: string): Promise<void> {
+  await createClient()
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("user_id", uid)
+    .is("read_at", null);
 }
 
 export async function fetchMyProfile(): Promise<DbProfile | null> {

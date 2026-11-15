@@ -52,7 +52,7 @@ import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from 
 import { SPARK_QUESTIONS } from "@/lib/demo/sparkQuestions";
 import { PERSONA_PROFILES, PERSONA_SELF_CARD } from "@/lib/demo/personas";
 import { AvailabilityEditor } from "@/components/AvailabilityEditor";
-import { getMutualAvailability, proposeMeeting, fetchMeetingProposals, respondMeetingProposal, type MutualSlot, type MeetingProposal } from "@/lib/data/store";
+import { getMutualAvailability, proposeMeeting, fetchMeetingProposals, respondMeetingProposal, fetchNotifications, markNotificationsRead, type MutualSlot, type MeetingProposal, type DbNotification } from "@/lib/data/store";
 import { seedMeetings, slotLabel, dateLabel, hourLabel, daysUntil, type Meeting } from "@/lib/demo/meetings";
 import { buildIcs } from "@/lib/calendar/ics";
 
@@ -160,6 +160,7 @@ export default function DemoPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [rescheduleFor, setRescheduleFor] = useState<Meeting | null>(null);
   const [dbProposals, setDbProposals] = useState<MeetingProposal[]>([]);
+  const [dbNotifs, setDbNotifs] = useState<DbNotification[]>([]);
 
   // Create modals
   const [createOpen, setCreateOpen] = useState(false);
@@ -214,6 +215,8 @@ export default function DemoPage() {
       setDbPlans([]);
       setDbTrips([]);
       setDbProfile(null);
+      setDbNotifs([]);
+      setDbProposals([]);
       setUid(null);
       return;
     }
@@ -265,8 +268,12 @@ export default function DemoPage() {
       subscribeTable("meeting_proposals", () => {
         fetchMeetingProposals(uid).then(setDbProposals);
       }),
+      subscribeTable("notifications", () => {
+        fetchNotifications(uid).then(setDbNotifs);
+      }),
     ];
     fetchMeetingProposals(uid).then(setDbProposals);
+    fetchNotifications(uid).then(setDbNotifs);
     return () => unsubs.forEach((u) => u());
   }, [session?.kind, uid]);
 
@@ -378,8 +385,15 @@ export default function DemoPage() {
     setUnread((u) => u + 1);
   }
   function openBell() {
-    setBellOpen((o) => !o);
-    if (!bellOpen) setUnread(0);
+    const opening = !bellOpen;
+    setBellOpen(opening);
+    if (opening) {
+      setUnread(0);
+      // Mark real notifications as read in the DB.
+      if (supabaseConfigured() && session?.kind === "registered" && uid) {
+        void markNotificationsRead(uid).then(() => fetchNotifications(uid).then(setDbNotifs));
+      }
+    }
   }
 
   function like(id: string) {
@@ -425,11 +439,11 @@ export default function DemoPage() {
   // ---- Meeting agreement actions ----
   function confirmMeeting(m: Meeting) {
     setMeetings((prev) => prev.map((x) => (x.id === m.id ? { ...x, status: "confirmed" } : x)));
-    addNotif({ emoji: "✅", text: `Confirmed with ${m.withName}: ${slotLabel(m)}. A reminder is set.`, tone: "match" });
+    addNotif({ emoji: "✅", text: `Confirmed with ${m.withName}: ${slotLabel(m)}. Add it to your calendar.`, tone: "match" });
   }
   function cancelMeeting(m: Meeting) {
     setMeetings((prev) => prev.map((x) => (x.id === m.id ? { ...x, status: "cancelled" } : x)));
-    addNotif({ emoji: "🚫", text: `Meeting with ${m.withName} cancelled. They’ve been notified.`, tone: "pending" });
+    addNotif({ emoji: "🚫", text: `Meeting with ${m.withName} cancelled.`, tone: "pending" });
   }
   function applyReschedule(m: Meeting, date: string, hour: number, place: string) {
     setMeetings((prev) =>
@@ -446,6 +460,25 @@ export default function DemoPage() {
         ? { emoji: "🎉", text: "Meeting confirmed! You’re both set.", tone: "match" }
         : { emoji: "🚫", text: "Meeting declined.", tone: "pending" },
     );
+  }
+
+  // BF-25: calendar export from the real UTC interval (correct duration/TZ).
+  function downloadIcsUtc(startsAt: string, endsAt: string, activity: string | null, place: string | null) {
+    const ics = buildIcs({
+      uid: `${startsAt}-${endsAt}@bothfree`,
+      sequence: 1,
+      startUtc: new Date(startsAt),
+      endUtc: new Date(endsAt),
+      summary: `BothFree: ${activity || "Meet up"}`,
+      location: place || undefined,
+    });
+    const blob = new Blob([ics], { type: "text/calendar" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bothfree-meeting.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function downloadIcs(m: Meeting) {
@@ -609,6 +642,9 @@ export default function DemoPage() {
   const tripDestinations = useMemo(() => Array.from(new Set(DEMO_TRIPS.map((t) => t.destination))), []);
 
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
+  // Registered accounts show real DB notifications; demo shows the local feed.
+  const dbUnread = dbNotifs.filter((n) => !n.readAt).length;
+  const bellUnread = session?.kind === "registered" ? dbUnread : unread;
   // Invite-mode plans are private (link-shared), so they never go in the public feed.
   const publicMyPlans = myPlans.filter((p) => p.mode !== "invite");
   const persona: Persona = session?.kind === "jury" ? "jury" : "demo";
@@ -870,18 +906,32 @@ export default function DemoPage() {
         <div className="side-foot">
           <div className="bellwrap">
             <button className="bell" onClick={openBell} aria-label="Notifications">
-              🔔{unread > 0 && <span className="bellcount">{unread}</span>}
+              🔔{bellUnread > 0 && <span className="bellcount">{bellUnread}</span>}
             </button>
             {bellOpen && (
               <div className="notifpanel">
                 <strong className="notifhead">Notifications</strong>
-                {notifs.length === 0 && <div className="notifempty">Nothing yet — join a plan!</div>}
-                {notifs.map((n) => (
-                  <div className={`notifitem ${n.tone}`} key={n.id}>
-                    <span className="notifemoji">{n.emoji}</span>
-                    <span>{n.text}</span>
-                  </div>
-                ))}
+                {session.kind === "registered" ? (
+                  dbNotifs.length === 0 ? (
+                    <div className="notifempty">No updates yet. Your invites and meeting updates will appear here.</div>
+                  ) : (
+                    dbNotifs.map((n) => (
+                      <div className={`notifitem ${n.readAt ? "pending" : "match"}`} key={n.id}>
+                        <span className="notifemoji">{notifEmoji(n.kind)}</span>
+                        <span>{n.title}</span>
+                      </div>
+                    ))
+                  )
+                ) : notifs.length === 0 ? (
+                  <div className="notifempty">No updates yet. Your invites and meeting updates will appear here.</div>
+                ) : (
+                  notifs.map((n) => (
+                    <div className={`notifitem ${n.tone}`} key={n.id}>
+                      <span className="notifemoji">{n.emoji}</span>
+                      <span>{n.text}</span>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
@@ -1080,9 +1130,10 @@ export default function DemoPage() {
                   viewerTrip={viewerTrip}
                   premium={premium}
                   requested={requested.has(t.id)}
-                  mine={myTrips.some((m) => m.id === t.id)}
+                  mine={dbMode ? !!t.mine : myTrips.some((m) => m.id === t.id)}
                   onPass={() => setPassed((prev) => new Set(prev).add(t.id))}
                   onJoin={() => joinTrip(t)}
+                  onOpenProfile={dbMode && t.ownerId ? () => setOpenProfile({ id: t.ownerId }) : undefined}
                 />
               ))}
               {visibleTrips.length === 0 && (
@@ -1435,6 +1486,13 @@ export default function DemoPage() {
                           <div className="pcard-actions">
                             <button className="passbtn" onClick={() => respondDbProposal(p, false)}>Decline</button>
                             <button className="matchbtn" onClick={() => respondDbProposal(p, true)}>Accept</button>
+                          </div>
+                        )}
+                        {p.status === "accepted" && (
+                          <div className="pcard-actions" style={{ gridTemplateColumns: "1fr" }}>
+                            <button className="likebtn" onClick={() => downloadIcsUtc(p.startsAt, p.endsAt, p.activity, p.place)}>
+                              📅 Add to calendar
+                            </button>
                           </div>
                         )}
                       </article>
@@ -1881,12 +1939,9 @@ function PlanCard(props: {
       </div>
 
       {!mine && (
-        <div className="pcard-actions">
+        <div className="pcard-actions" style={{ gridTemplateColumns: "1fr 1.6fr" }}>
           <button className="passbtn" onClick={onPass}>
-            Pass
-          </button>
-          <button className={`likebtn${liked ? " on" : ""}`} onClick={onLike}>
-            {liked ? "♥ Liked" : "♡ Like"}
+            Not interested
           </button>
           <button className="matchbtn" disabled={requested} onClick={onJoin}>
             {requested ? "Request sent · Pending" : "Request to join"}
@@ -2129,6 +2184,14 @@ function ProfileView({ session, demo, persona, profile }: { session: typeof TEST
 }
 
 /* ---------------- Create plan modal ---------------- */
+
+function notifEmoji(kind: string): string {
+  if (kind.startsWith("friend")) return "🤝";
+  if (kind === "meeting_confirmed") return "🎉";
+  if (kind === "meeting_declined") return "🚫";
+  if (kind.startsWith("meeting")) return "📅";
+  return "🔔";
+}
 
 function mutualDateLabel(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
@@ -2409,10 +2472,12 @@ function TripCard(props: {
   mine: boolean;
   onPass: () => void;
   onJoin: () => void;
+  onOpenProfile?: () => void;
 }) {
-  const { trip, viewerTrip, premium, requested, mine, onPass, onJoin } = props;
+  const { trip, viewerTrip, premium, requested, mine, onPass, onJoin, onOpenProfile } = props;
   const comfort = COMFORTS.find((c) => c.id === trip.comfort);
   const withW = WITH_WHOM.find((w) => w.id === trip.withWhom);
+  const clickable = !mine && !!onOpenProfile;
 
   let overlapLabel: string | null = null;
   if (viewerTrip && !mine) {
@@ -2432,10 +2497,21 @@ function TripCard(props: {
   return (
     <article className="pcard">
       <div className="pcard-top">
-        <div className="avatar">{trip.emoji}</div>
+        <button
+          className={`avatar${clickable ? " clickable" : ""}`}
+          onClick={clickable ? onOpenProfile : undefined}
+          style={{ border: "none", cursor: clickable ? "pointer" : "default" }}
+          aria-label={clickable ? `Open ${trip.name}'s profile` : undefined}
+        >
+          {trip.emoji}
+        </button>
         <div className="pcard-id">
           <strong>
-            {trip.name}
+            {clickable ? (
+              <button className="namelink" onClick={onOpenProfile}>{trip.name}</button>
+            ) : (
+              trip.name
+            )}
             {!mine && `, ${trip.age}`}
             {mine && <span className="minetag"> · you</span>}
           </strong>
