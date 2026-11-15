@@ -159,6 +159,85 @@ export function statusFor(rows: FriendRequestRow[], uid: string, otherId: string
   return { status: row.from_user === uid ? "pending_out" : "pending_in", requestId: row.id };
 }
 
+// ---- Conversations + messages --------------------------------------
+export interface DbConversation {
+  id: string;
+  otherId: string;
+}
+export interface DbMessage {
+  id: string;
+  conversationId: string;
+  sender: string;
+  body: string;
+}
+
+function convPair(a: string, b: string): [string, string] {
+  return a < b ? [a, b] : [b, a];
+}
+
+/** Find the conversation with another user, creating it if needed. */
+export async function ensureConversation(otherId: string): Promise<string | null> {
+  const supabase = createClient();
+  const me = (await supabase.auth.getUser()).data.user?.id;
+  if (!me || me === otherId) return null;
+  const [user_a, user_b] = convPair(me, otherId);
+  const existing = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("user_a", user_a)
+    .eq("user_b", user_b)
+    .maybeSingle();
+  if (existing.data) return (existing.data as { id: string }).id;
+  const { data } = await supabase.from("conversations").insert({ user_a, user_b }).select("id").single();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+export async function fetchConversations(uid: string): Promise<DbConversation[]> {
+  const { data } = await createClient()
+    .from("conversations")
+    .select("id, user_a, user_b")
+    .or(`user_a.eq.${uid},user_b.eq.${uid}`);
+  const rows = (data as { id: string; user_a: string; user_b: string }[] | null) ?? [];
+  return rows.map((r) => ({ id: r.id, otherId: r.user_a === uid ? r.user_b : r.user_a }));
+}
+
+export async function fetchMessages(conversationId: string): Promise<DbMessage[]> {
+  const { data } = await createClient()
+    .from("messages")
+    .select("id, conversation_id, sender, body")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true });
+  return ((data as { id: string; conversation_id: string; sender: string; body: string }[] | null) ?? []).map((r) => ({
+    id: r.id,
+    conversationId: r.conversation_id,
+    sender: r.sender,
+    body: r.body,
+  }));
+}
+
+export async function sendDbMessage(conversationId: string, body: string): Promise<{ error?: string }> {
+  const supabase = createClient();
+  const sender = (await supabase.auth.getUser()).data.user?.id;
+  if (!sender) return { error: "Not signed in" };
+  const { error } = await supabase.from("messages").insert({ conversation_id: conversationId, sender, body });
+  return error ? { error: error.message } : {};
+}
+
+/**
+ * Subscribe to any insert/update on a table and call `cb`. Returns an unsubscribe
+ * function. Used so one account's actions appear live in another's session.
+ */
+export function subscribeTable(table: string, cb: () => void): () => void {
+  const supabase = createClient();
+  const channel = supabase
+    .channel(`rt-${table}-${Math.random().toString(36).slice(2)}`)
+    .on("postgres_changes", { event: "*", schema: "public", table }, () => cb())
+    .subscribe();
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
+
 export async function fetchMyProfile(): Promise<DbProfile | null> {
   const supabase = createClient();
   const u = (await supabase.auth.getUser()).data.user;

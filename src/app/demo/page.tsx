@@ -39,6 +39,11 @@ import {
   sendFriendRequest,
   respondFriendRequest,
   statusFor,
+  ensureConversation,
+  fetchConversations,
+  fetchMessages,
+  sendDbMessage,
+  subscribeTable,
   type DbProfile,
   type PublicProfile,
   type FriendRequestRow,
@@ -123,10 +128,15 @@ export default function DemoPage() {
   const [incoming, setIncoming] = useState<Person[]>(INCOMING_REQUESTS);
   const [sentFriends, setSentFriends] = useState<Set<string>>(new Set());
 
-  // Messages
+  // Messages (demo)
   const [conversations, setConversations] = useState<Conversation[]>(SEED_CONVERSATIONS);
   const [openChat, setOpenChat] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // Messages (Supabase)
+  const [dbConvos, setDbConvos] = useState<{ id: string; otherId: string; name: string }[]>([]);
+  const [dbOpenConvo, setDbOpenConvo] = useState<string | null>(null);
+  const [dbMsgs, setDbMsgs] = useState<{ id: string; sender: string; body: string }[]>([]);
+  const [dbDraft, setDbDraft] = useState("");
 
   // Supabase-backed data (registered accounts)
   const [uid, setUid] = useState<string | null>(null);
@@ -219,6 +229,35 @@ export default function DemoPage() {
       active = false;
     };
   }, [session?.kind]);
+
+  // Realtime: when another account changes shared tables, refresh live.
+  useEffect(() => {
+    if (!(supabaseConfigured() && session?.kind === "registered" && uid)) return;
+    const unsubs = [
+      subscribeTable("plans", () => {
+        fetchPlans().then(setDbPlans);
+      }),
+      subscribeTable("trips", () => {
+        fetchTrips(uid).then(setDbTrips);
+      }),
+      subscribeTable("friend_requests", () => {
+        void refreshFriends();
+      }),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, [session?.kind, uid]);
+
+  // Load DB conversations when opening Messages, and live-refresh on new messages.
+  useEffect(() => {
+    if (!(supabaseConfigured() && session?.kind === "registered" && uid && view === "messages")) return;
+    void loadDbConvos();
+    const unsub = subscribeTable("messages", () => {
+      void loadDbConvos();
+      if (dbOpenConvo) fetchMessages(dbOpenConvo).then(setDbMsgs);
+    });
+    return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, session?.kind, uid, dbOpenConvo]);
 
   // Keep the cross-account match bus in sync (live across tabs via `storage`).
   useEffect(() => {
@@ -395,6 +434,34 @@ export default function DemoPage() {
     await respondFriendRequest(requestId, accept);
     await refreshFriends();
     if (accept) addNotif({ emoji: "🤝", text: `You and ${name} are now friends.`, tone: "match" });
+  }
+
+  // ---- Real (Supabase) messaging ----
+  async function loadDbConvos() {
+    if (!uid) return;
+    const convos = await fetchConversations(uid);
+    const withNames = await Promise.all(
+      convos.map(async (c) => ({ ...c, name: peopleMap[c.otherId] ?? (await fetchProfileById(c.otherId))?.name ?? "Member" })),
+    );
+    setDbConvos(withNames);
+  }
+  async function openDbConvo(id: string) {
+    setDbOpenConvo(id);
+    setDbMsgs(await fetchMessages(id));
+  }
+  async function startChatWith(otherId: string) {
+    const id = await ensureConversation(otherId);
+    if (!id) return;
+    setView("messages");
+    await loadDbConvos();
+    await openDbConvo(id);
+  }
+  async function sendDbChat() {
+    const body = dbDraft.trim();
+    if (!body || !dbOpenConvo) return;
+    setDbDraft("");
+    await sendDbMessage(dbOpenConvo, body);
+    setDbMsgs(await fetchMessages(dbOpenConvo));
   }
 
   function openConversation(id: string) {
@@ -1043,7 +1110,67 @@ export default function DemoPage() {
           </>
         )}
 
-        {view === "messages" && (
+        {view === "messages" && dbMode && (
+          <>
+            <div className="contenthead">
+              <div>
+                <h1 className="pagetitle">Messages</h1>
+                <p className="sub">💬 You can message friends and mutual matches only.</p>
+              </div>
+            </div>
+            <div className={`chatwrap${dbOpenConvo ? " open" : ""}`}>
+              <div className="chatlist">
+                {dbConvos.length === 0 && (
+                  <div className="note" style={{ margin: 4 }}>No conversations yet. Open a friend’s profile and tap “Message.”</div>
+                )}
+                {dbConvos.map((c) => (
+                  <button key={c.id} className={`convo${dbOpenConvo === c.id ? " active" : ""}`} onClick={() => openDbConvo(c.id)}>
+                    <div className="avatar">🧑</div>
+                    <div className="convo-id">
+                      <strong>{c.name}</strong>
+                      <span className="convo-last">Open chat</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="chatthread">
+                {!dbOpenConvo ? (
+                  <div className="chatempty">Select a conversation to start chatting.</div>
+                ) : (
+                  <>
+                    <div className="chathead">
+                      <button className="chatback" onClick={() => setDbOpenConvo(null)} aria-label="Back">←</button>
+                      <div className="avatar">🧑</div>
+                      <strong>{dbConvos.find((c) => c.id === dbOpenConvo)?.name ?? "Chat"}</strong>
+                    </div>
+                    <div className="chatbody">
+                      {dbMsgs.length === 0 && <div className="chatblocked">Say hi 👋</div>}
+                      {dbMsgs.map((m) => (
+                        <div key={m.id} className={`bubble ${m.sender === uid ? "me" : "them"}`}>
+                          {m.body}
+                        </div>
+                      ))}
+                    </div>
+                    <form
+                      className="chatinput"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void sendDbChat();
+                      }}
+                    >
+                      <input className="custominput" placeholder="Write a message…" value={dbDraft} onChange={(e) => setDbDraft(e.target.value)} />
+                      <button type="submit" className="matchbtn" disabled={!dbDraft.trim()}>
+                        Send
+                      </button>
+                    </form>
+                  </>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {view === "messages" && !dbMode && (
           <>
             <div className="contenthead">
               <div>
@@ -1213,6 +1340,10 @@ export default function DemoPage() {
           friendRows={friendRows}
           onClose={() => setOpenProfile(null)}
           onSendFriend={(toUser, name) => dbSendFriend(toUser, name)}
+          onMessage={(toUser) => {
+            setOpenProfile(null);
+            void startChatWith(toUser);
+          }}
         />
       )}
     </div>
@@ -1229,6 +1360,7 @@ function ProfileModal({
   friendRows,
   onClose,
   onSendFriend,
+  onMessage,
 }: {
   uid: string | null;
   dbMode: boolean;
@@ -1237,6 +1369,7 @@ function ProfileModal({
   friendRows: FriendRequestRow[];
   onClose: () => void;
   onSendFriend: (toUser: string, name: string) => void;
+  onMessage: (toUser: string) => void;
 }) {
   const [loaded, setLoaded] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1269,7 +1402,15 @@ function ProfileModal({
       );
     }
     if (!profileId) return <span className="eventbadge">Profile unavailable</span>;
-    if (rel === "friends") return <span className="eventbadge">✓ Friends</span>;
+    if (rel === "friends")
+      return (
+        <>
+          <span className="eventbadge">✓ Friends</span>
+          <button className="matchbtn" onClick={() => onMessage(profileId)}>
+            💬 Message
+          </button>
+        </>
+      );
     if (rel === "pending_out" || sent) return <span className="eventbadge">Requested</span>;
     if (rel === "pending_in") return <span className="eventbadge">Wants to be friends — see Friends tab</span>;
     return (

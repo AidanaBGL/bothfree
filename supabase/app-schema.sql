@@ -151,10 +151,20 @@ drop policy if exists "owners manage their trips" on public.trips;
 create policy "owners manage their trips" on public.trips for all to authenticated
   using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
 
--- 5. REALTIME for messages (optional convenience) --------------------
+-- 5. REALTIME so one account's actions appear live in another's session ----
 do $$
 begin
   alter publication supabase_realtime add table public.messages;
-exception when others then
-  null; -- already added, or publication managed in dashboard
-end $$;
+exception when others then null; end $$;
+do $$
+begin
+  alter publication supabase_realtime add table public.friend_requests;
+exception when others then null; end $$;
+do $$
+begin
+  alter publication supabase_realtime add table public.plans;
+exception when others then null; end $$;
+do $$
+begin
+  alter publication supabase_realtime add table public.trips;
+exception when others then null; end $$;
