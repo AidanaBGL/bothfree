@@ -2108,3 +2108,46 @@ nav a:hover {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ---- Meetings ---- */
+.meetstate {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 6px 11px;
+  border-radius: 99px;
+  white-space: nowrap;
+  text-align: center;
+}
+.meetstate.ok { background: #e6f7f0; color: var(--green); }
+.meetstate.you { background: #fff6e8; color: #8b6218; }
+.meetstate.pend { background: var(--accent-soft); color: var(--accent); }
+.meetstate.off { background: var(--panel-2); color: var(--faint); }
+.meetslot {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0 4px;
+}
+.meetslot span {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.meetremind {
+  margin-top: 12px;
+  background: #e6f7f0;
+  border: 1px solid #c9ecdc;
+  color: #15795a;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.meetremind.you {
+  background: #fff6e8;
+  border-color: #ffe6bf;
+  color: #8b6218;
+}

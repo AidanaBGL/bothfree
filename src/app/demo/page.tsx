@@ -50,6 +50,8 @@ import {
 } from "@/lib/data/store";
 import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from "@/lib/demo/matchbus";
 import { SPARK_QUESTIONS } from "@/lib/demo/sparkQuestions";
+import { seedMeetings, slotLabel, dateLabel, hourLabel, daysUntil, type Meeting } from "@/lib/demo/meetings";
+import { buildIcs } from "@/lib/calendar/ics";
 
 const SESSION_KEY = "bf-demo-session";
 type AccountKind = "jury" | "demo" | "registered";
@@ -60,7 +62,7 @@ interface Session {
 }
 const TEST_IDENTITY: Session = { name: TEST_PROFILE.name, email: "demo@bothfree.app", kind: "demo" };
 
-type View = "feed" | "travel" | "friends" | "messages" | "spark" | "plans" | "profile";
+type View = "feed" | "travel" | "friends" | "messages" | "spark" | "meetings" | "plans" | "profile";
 type Mode = "invite" | "friendship" | "dating";
 
 interface Notif {
@@ -151,6 +153,10 @@ export default function DemoPage() {
   const [bus, setBus] = useState<BusPost[]>([]);
   const [dismissedReq, setDismissedReq] = useState<Set<number>>(new Set());
 
+  // Meetings (agreement flow)
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [rescheduleFor, setRescheduleFor] = useState<Meeting | null>(null);
+
   // Create modals
   const [createOpen, setCreateOpen] = useState(false);
   const [createTripOpen, setCreateTripOpen] = useState(false);
@@ -183,9 +189,11 @@ export default function DemoPage() {
     if (session?.kind === "registered") {
       setConversations([]);
       setIncoming([]);
+      setMeetings([]);
     } else if (session?.kind === "jury" || session?.kind === "demo") {
       setConversations(SEED_CONVERSATIONS);
       setIncoming(INCOMING_REQUESTS);
+      setMeetings(seedMeetings());
     }
   }, [session?.kind]);
 
@@ -373,11 +381,68 @@ export default function DemoPage() {
   }
   function joinPlan(plan: DemoPlan) {
     setRequested((prev) => new Set(prev).add(plan.id));
+    // Turn the "I'm in" into a concrete meeting proposal that must be confirmed.
+    const parsed = parsePlanSlot(plan);
+    const meeting: Meeting = {
+      id: `mtg-${Date.now()}`,
+      withName: plan.name,
+      emoji: plan.emoji,
+      activityLabel: activityById(plan.activityId)?.label ?? "Meet up",
+      date: parsed.date,
+      hour: parsed.hour,
+      place: plan.areaLabel ?? areaById(plan.areaId)?.label ?? "TBD",
+      status: "awaiting_them",
+      proposedBy: "you",
+    };
+    setMeetings((prev) => [meeting, ...prev]);
     if (plan.likesYouBack) {
-      addNotif({ emoji: plan.emoji, text: `It’s a match! ${plan.name} is in for ${activityById(plan.activityId)?.label ?? "the plan"} 🎉`, tone: "match" });
+      // Seeded counterpart confirms shortly after — demonstrates both-sides agreement.
+      setTimeout(() => {
+        setMeetings((prev) => prev.map((m) => (m.id === meeting.id ? { ...m, status: "confirmed" } : m)));
+        addNotif({ emoji: plan.emoji, text: `${plan.name} confirmed! You're set for ${meeting.activityLabel} — see Meetings.`, tone: "match" });
+      }, 1200);
+      addNotif({ emoji: plan.emoji, text: `It’s a match with ${plan.name}! Proposed a time — awaiting their confirmation.`, tone: "pending" });
     } else {
-      addNotif({ emoji: "📨", text: `Request sent to ${plan.name}. We’ll let you know if they’re in.`, tone: "pending" });
+      addNotif({ emoji: "📨", text: `Proposed a meeting to ${plan.name}. We’ll notify you when they respond.`, tone: "pending" });
     }
+    setView("meetings");
+  }
+
+  // ---- Meeting agreement actions ----
+  function confirmMeeting(m: Meeting) {
+    setMeetings((prev) => prev.map((x) => (x.id === m.id ? { ...x, status: "confirmed" } : x)));
+    addNotif({ emoji: "✅", text: `Confirmed with ${m.withName}: ${slotLabel(m)}. A reminder is set.`, tone: "match" });
+  }
+  function cancelMeeting(m: Meeting) {
+    setMeetings((prev) => prev.map((x) => (x.id === m.id ? { ...x, status: "cancelled" } : x)));
+    addNotif({ emoji: "🚫", text: `Meeting with ${m.withName} cancelled. They’ve been notified.`, tone: "pending" });
+  }
+  function applyReschedule(m: Meeting, date: string, hour: number, place: string) {
+    setMeetings((prev) =>
+      prev.map((x) => (x.id === m.id ? { ...x, date, hour, place, status: "awaiting_them", proposedBy: "you" } : x)),
+    );
+    setRescheduleFor(null);
+    addNotif({ emoji: "🔁", text: `New time proposed to ${m.withName} — awaiting their confirmation.`, tone: "pending" });
+  }
+  function downloadIcs(m: Meeting) {
+    const start = new Date(`${m.date}T00:00:00`);
+    start.setHours(m.hour, 0, 0, 0);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const ics = buildIcs({
+      uid: `${m.id}@bothfree`,
+      sequence: 1,
+      startUtc: start,
+      endUtc: end,
+      summary: `BothFree: ${m.activityLabel} with ${m.withName}`,
+      location: m.place,
+    });
+    const blob = new Blob([ics], { type: "text/calendar" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bothfree-${m.id}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function joinTrip(trip: DemoTrip) {
@@ -751,6 +816,7 @@ export default function DemoPage() {
             ["travel", "✈️", "Travel"],
             ["friends", "🤝", "Friends"],
             ["messages", "💬", "Messages"],
+            ["meetings", "📅", "Meetings"],
             ["spark", "✨", "Spark"],
             ["plans", "🗂️", "My plans"],
             ["profile", "🧑", "Profile"],
@@ -761,6 +827,9 @@ export default function DemoPage() {
               {v === "plans" && myPlansList.length > 0 && <span className="navbadge">{myPlansList.length}</span>}
               {v === "friends" && incoming.length > 0 && <span className="navbadge">{incoming.length}</span>}
               {v === "messages" && totalUnread > 0 && <span className="navbadge">{totalUnread}</span>}
+              {v === "meetings" && meetings.filter((m) => m.status === "awaiting_you").length > 0 && (
+                <span className="navbadge">{meetings.filter((m) => m.status === "awaiting_you").length}</span>
+              )}
               {v === "spark" && !premium && <span className="navbadge pro">PRO</span>}
             </button>
           ))}
@@ -1278,6 +1347,40 @@ export default function DemoPage() {
           </>
         )}
 
+        {view === "meetings" && (
+          <>
+            <div className="contenthead">
+              <div>
+                <h1 className="pagetitle">Meetings 📅</h1>
+                <p className="sub">A match is just the start — a meeting counts only when both of you confirm.</p>
+              </div>
+            </div>
+            {meetings.length === 0 ? (
+              <div className="emptybox">
+                <div className="emptyemoji">📅</div>
+                <h3>No meetings yet</h3>
+                <p>Say “I’m in” on a plan in Discover to propose a time — then both sides confirm.</p>
+                <button className="continue" style={{ maxWidth: 220 }} onClick={() => setView("feed")}>
+                  Browse plans
+                </button>
+              </div>
+            ) : (
+              <div className="feed">
+                {meetings.map((m) => (
+                  <MeetingCard
+                    key={m.id}
+                    m={m}
+                    onConfirm={() => confirmMeeting(m)}
+                    onCancel={() => cancelMeeting(m)}
+                    onReschedule={() => setRescheduleFor(m)}
+                    onIcs={() => downloadIcs(m)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
         {view === "spark" && <SparkView premium={premium} onUnlock={() => setPremium(true)} />}
 
         {view === "profile" && <ProfileView session={session} demo={isDemo} profile={dbProfile} />}
@@ -1328,6 +1431,14 @@ export default function DemoPage() {
             setView("travel");
             addNotif({ emoji: "✈️", text: "Your trip is live. We’ll match travellers by dates, budget, and style.", tone: "match" });
           }}
+        />
+      )}
+
+      {rescheduleFor && (
+        <RescheduleModal
+          meeting={rescheduleFor}
+          onClose={() => setRescheduleFor(null)}
+          onApply={(date, hour, place) => applyReschedule(rescheduleFor, date, hour, place)}
         />
       )}
 
@@ -1798,6 +1909,27 @@ function ProfileView({ session, demo, profile }: { session: typeof TEST_IDENTITY
 }
 
 /* ---------------- Create plan modal ---------------- */
+
+/** Best-effort parse of a plan's "Sat · 11:00 AM" label into date + hour. */
+function parsePlanSlot(plan: DemoPlan): { date: string; hour: number } {
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const label = plan.whenLabel ?? "";
+  const wd = weekdays.findIndex((w) => label.startsWith(w));
+  const timeM = label.match(/(\d{1,2}):\d{2}\s*(AM|PM)/i);
+  let hour = 18;
+  if (timeM) {
+    hour = Number(timeM[1]) % 12;
+    if (/PM/i.test(timeM[2])) hour += 12;
+  }
+  const d = new Date();
+  if (wd >= 0) {
+    const delta = (wd - d.getDay() + 7) % 7 || 7;
+    d.setDate(d.getDate() + delta);
+  } else {
+    d.setDate(d.getDate() + 3);
+  }
+  return { date: d.toISOString().slice(0, 10), hour };
+}
 
 function ageFromDob(dob: string): number {
   const d = new Date(`${dob}T00:00:00`);
@@ -2378,6 +2510,132 @@ function PersonRow({ person, children }: { person: Person; children: React.React
         <span className="frow-blurb">{person.blurb}</span>
       </div>
       <div className="frow-actions">{children}</div>
+    </div>
+  );
+}
+
+/* ---------------- Meeting card + reschedule ---------------- */
+
+const MEETING_STATE: Record<Meeting["status"], { label: string; cls: string }> = {
+  awaiting_them: { label: "Awaiting their confirmation", cls: "pend" },
+  awaiting_you: { label: "Waiting for YOU to confirm", cls: "you" },
+  confirmed: { label: "Confirmed ✓", cls: "ok" },
+  cancelled: { label: "Cancelled", cls: "off" },
+  completed: { label: "Completed", cls: "off" },
+};
+
+function MeetingCard({
+  m,
+  onConfirm,
+  onCancel,
+  onReschedule,
+  onIcs,
+}: {
+  m: Meeting;
+  onConfirm: () => void;
+  onCancel: () => void;
+  onReschedule: () => void;
+  onIcs: () => void;
+}) {
+  const st = MEETING_STATE[m.status];
+  const dleft = daysUntil(m.date);
+  const active = m.status === "awaiting_them" || m.status === "awaiting_you" || m.status === "confirmed";
+  return (
+    <article className="pcard">
+      <div className="pcard-top">
+        <div className="avatar">{m.emoji}</div>
+        <div className="pcard-id">
+          <strong>{m.activityLabel} with {m.withName}</strong>
+          <span className="pcard-area">📍 {m.place}</span>
+        </div>
+        <span className={`meetstate ${st.cls}`}>{st.label}</span>
+      </div>
+
+      <div className="meetslot">
+        <span className="meetslot-date">🗓️ {dateLabel(m.date)}</span>
+        <span className="meetslot-time">⏰ {hourLabel(m.hour)}</span>
+      </div>
+
+      {m.status === "confirmed" && dleft >= 0 && (
+        <div className="meetremind">
+          🔔 Reminder: {dleft === 0 ? "today!" : dleft === 1 ? "tomorrow" : `in ${dleft} days`}
+        </div>
+      )}
+      {m.status === "awaiting_you" && (
+        <div className="meetremind you">{m.withName} proposed this time — confirm or suggest another.</div>
+      )}
+
+      {active && (
+        <div className="pcard-actions" style={{ gridTemplateColumns: m.status === "confirmed" ? "1fr 1fr 1fr" : "1fr 1fr" }}>
+          {m.status === "awaiting_you" && (
+            <button className="matchbtn" onClick={onConfirm}>
+              Confirm
+            </button>
+          )}
+          {m.status === "confirmed" && (
+            <button className="likebtn" onClick={onIcs}>
+              📅 Add to calendar
+            </button>
+          )}
+          <button className="passbtn" onClick={onReschedule}>
+            Reschedule
+          </button>
+          <button className="passbtn" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function RescheduleModal({
+  meeting,
+  onClose,
+  onApply,
+}: {
+  meeting: Meeting;
+  onClose: () => void;
+  onApply: (date: string, hour: number, place: string) => void;
+}) {
+  const [date, setDate] = useState(meeting.date);
+  const [hour, setHour] = useState(meeting.hour);
+  const [place, setPlace] = useState(meeting.place);
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <div className="modal-head">
+          <h2>Propose a new time</h2>
+          <button className="closebtn" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="modal-body">
+          <label className="field">
+            <span>Date</span>
+            <input type="date" className="custominput" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Time</span>
+            <select className="custominput" value={hour} onChange={(e) => setHour(Number(e.target.value))}>
+              {Array.from({ length: 14 }, (_, i) => i + 8).map((h) => (
+                <option key={h} value={h}>
+                  {hourLabel(h)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Place</span>
+            <input className="custominput" value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Where should you meet?" />
+          </label>
+          <div className="note">The other person will be notified and must confirm the new time.</div>
+        </div>
+        <div className="modal-foot">
+          <button className="passbtn" onClick={onClose}>Cancel</button>
+          <button className="continue" style={{ width: "auto", padding: "14px 26px" }} disabled={!date || !place.trim()} onClick={() => onApply(date, hour, place.trim())}>
+            Send new time →
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
