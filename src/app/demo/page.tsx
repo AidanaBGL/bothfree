@@ -51,6 +51,8 @@ import {
 import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from "@/lib/demo/matchbus";
 import { SPARK_QUESTIONS } from "@/lib/demo/sparkQuestions";
 import { PERSONA_PROFILES, PERSONA_SELF_CARD } from "@/lib/demo/personas";
+import { AvailabilityEditor } from "@/components/AvailabilityEditor";
+import { getMutualAvailability, proposeMeeting, fetchMeetingProposals, respondMeetingProposal, type MutualSlot, type MeetingProposal } from "@/lib/data/store";
 import { seedMeetings, slotLabel, dateLabel, hourLabel, daysUntil, type Meeting } from "@/lib/demo/meetings";
 import { buildIcs } from "@/lib/calendar/ics";
 
@@ -63,7 +65,7 @@ interface Session {
 }
 const TEST_IDENTITY: Session = { name: TEST_PROFILE.name, email: "demo@bothfree.app", kind: "demo" };
 
-type View = "feed" | "travel" | "friends" | "messages" | "spark" | "meetings" | "plans" | "profile";
+type View = "feed" | "travel" | "friends" | "messages" | "spark" | "meetings" | "availability" | "plans" | "profile";
 type Mode = "invite" | "friendship" | "dating";
 
 interface Notif {
@@ -157,11 +159,18 @@ export default function DemoPage() {
   // Meetings (agreement flow)
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [rescheduleFor, setRescheduleFor] = useState<Meeting | null>(null);
+  const [dbProposals, setDbProposals] = useState<MeetingProposal[]>([]);
 
   // Create modals
   const [createOpen, setCreateOpen] = useState(false);
   const [createTripOpen, setCreateTripOpen] = useState(false);
   const [inviteLinkPlan, setInviteLinkPlan] = useState<DemoPlan | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast((t) => (t === msg ? null : t)), 2600);
+  }
 
   useEffect(() => {
     let active = true;
@@ -253,7 +262,11 @@ export default function DemoPage() {
       subscribeTable("friend_requests", () => {
         void refreshFriends();
       }),
+      subscribeTable("meeting_proposals", () => {
+        fetchMeetingProposals(uid).then(setDbProposals);
+      }),
     ];
+    fetchMeetingProposals(uid).then(setDbProposals);
     return () => unsubs.forEach((u) => u());
   }, [session?.kind, uid]);
 
@@ -397,16 +410,15 @@ export default function DemoPage() {
       proposedBy: "you",
     };
     setMeetings((prev) => [meeting, ...prev]);
-    if (plan.likesYouBack) {
-      // Seeded counterpart confirms shortly after — demonstrates both-sides agreement.
+    // Only the seeded jury/demo counterpart auto-confirms — never for a real
+    // account (a real meeting requires the other person to actually confirm).
+    if (isDemo && plan.likesYouBack) {
       setTimeout(() => {
         setMeetings((prev) => prev.map((m) => (m.id === meeting.id ? { ...m, status: "confirmed" } : m)));
         addNotif({ emoji: plan.emoji, text: `${plan.name} confirmed! You're set for ${meeting.activityLabel} — see Meetings.`, tone: "match" });
       }, 1200);
-      addNotif({ emoji: plan.emoji, text: `It’s a match with ${plan.name}! Proposed a time — awaiting their confirmation.`, tone: "pending" });
-    } else {
-      addNotif({ emoji: "📨", text: `Proposed a meeting to ${plan.name}. We’ll notify you when they respond.`, tone: "pending" });
     }
+    addNotif({ emoji: "📨", text: `Request sent to ${plan.name} — waiting for a reply.`, tone: "pending" });
     setView("meetings");
   }
 
@@ -426,6 +438,16 @@ export default function DemoPage() {
     setRescheduleFor(null);
     addNotif({ emoji: "🔁", text: `New time proposed to ${m.withName} — awaiting their confirmation.`, tone: "pending" });
   }
+  async function respondDbProposal(p: MeetingProposal, accept: boolean) {
+    await respondMeetingProposal(p.id, accept);
+    if (uid) setDbProposals(await fetchMeetingProposals(uid));
+    addNotif(
+      accept
+        ? { emoji: "🎉", text: "Meeting confirmed! You’re both set.", tone: "match" }
+        : { emoji: "🚫", text: "Meeting declined.", tone: "pending" },
+    );
+  }
+
   function downloadIcs(m: Meeting) {
     const start = new Date(`${m.date}T00:00:00`);
     start.setHours(m.hour, 0, 0, 0);
@@ -824,6 +846,7 @@ export default function DemoPage() {
             ["friends", "🤝", "Friends"],
             ["messages", "💬", "Messages"],
             ["meetings", "📅", "Meetings"],
+            ["availability", "🕒", "My free time"],
             ["spark", "✨", "Spark"],
             ["plans", "🗂️", "My plans"],
             ["profile", "🧑", "Profile"],
@@ -832,7 +855,9 @@ export default function DemoPage() {
               <span className="navicon">{icon}</span>
               {label}
               {v === "plans" && myPlansList.length > 0 && <span className="navbadge">{myPlansList.length}</span>}
-              {v === "friends" && incoming.length > 0 && <span className="navbadge">{incoming.length}</span>}
+              {v === "friends" && (dbMode ? friendRows.filter((r) => r.status === "pending" && r.to_user === uid).length : incoming.length) > 0 && (
+                <span className="navbadge">{dbMode ? friendRows.filter((r) => r.status === "pending" && r.to_user === uid).length : incoming.length}</span>
+              )}
               {v === "messages" && totalUnread > 0 && <span className="navbadge">{totalUnread}</span>}
               {v === "meetings" && meetings.filter((m) => m.status === "awaiting_you").length > 0 && (
                 <span className="navbadge">{meetings.filter((m) => m.status === "awaiting_you").length}</span>
@@ -865,7 +890,7 @@ export default function DemoPage() {
             onClick={() => setPremium((p) => !p)}
             title="Test mode — no real charge"
           >
-            {premium ? "★ Premium" : "Try Premium"}
+            {premium ? "★ Premium · demo" : "Premium (demo)"}
           </button>
           <button className="signout" onClick={signOut}>
             Sign out
@@ -1354,6 +1379,26 @@ export default function DemoPage() {
           </>
         )}
 
+        {view === "availability" && (
+          <>
+            <div className="contenthead">
+              <div>
+                <h1 className="pagetitle">When are you free? 🕒</h1>
+                <p className="sub">Pick your days and hours. We’ll find time that works for both of you — your full schedule stays private.</p>
+              </div>
+            </div>
+            {dbMode ? (
+              <div style={{ maxWidth: 720 }}>
+                <AvailabilityEditor onToast={showToast} />
+              </div>
+            ) : (
+              <div className="note" style={{ maxWidth: 620 }}>
+                Setting real free time needs a signed-in account. Use <b>Log In / Sign Up</b> — then availability saves to the database and powers the “When you’re both free” matching.
+              </div>
+            )}
+          </>
+        )}
+
         {view === "meetings" && (
           <>
             <div className="contenthead">
@@ -1362,7 +1407,42 @@ export default function DemoPage() {
                 <p className="sub">A match is just the start — a meeting counts only when both of you confirm.</p>
               </div>
             </div>
-            {meetings.length === 0 ? (
+            {dbMode ? (
+              dbProposals.length === 0 ? (
+                <div className="emptybox">
+                  <div className="emptyemoji">📅</div>
+                  <h3>No meetings yet</h3>
+                  <p>Open a friend’s profile → “Find time you’re both free” → propose a meeting.</p>
+                </div>
+              ) : (
+                <div className="feed">
+                  {dbProposals.map((p) => {
+                    const incoming = p.toUser === uid;
+                    const label = `${mutualDateLabel(p.startsAt)} · ${mutualTimeLabel(p.startsAt)}–${mutualTimeLabel(p.endsAt)}`;
+                    return (
+                      <article className="pcard" key={p.id}>
+                        <div className="pcard-top">
+                          <div className="avatar">🧑</div>
+                          <div className="pcard-id">
+                            <strong>{p.activity || "Meet up"}{p.place ? ` · ${p.place}` : ""}</strong>
+                            <span className="pcard-area">🗓️ {label}</span>
+                          </div>
+                          <span className={`meetstate ${p.status === "accepted" ? "ok" : p.status === "pending" ? (incoming ? "you" : "pend") : "off"}`}>
+                            {p.status === "accepted" ? "Confirmed ✓" : p.status === "declined" ? "Declined" : p.status === "cancelled" ? "Cancelled" : incoming ? "Waiting for YOU" : "Awaiting their reply"}
+                          </span>
+                        </div>
+                        {p.status === "pending" && incoming && (
+                          <div className="pcard-actions">
+                            <button className="passbtn" onClick={() => respondDbProposal(p, false)}>Decline</button>
+                            <button className="matchbtn" onClick={() => respondDbProposal(p, true)}>Accept</button>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )
+            ) : meetings.length === 0 ? (
               <div className="emptybox">
                 <div className="emptyemoji">📅</div>
                 <h3>No meetings yet</h3>
@@ -1409,7 +1489,12 @@ export default function DemoPage() {
             const isInvite = plan.mode === "invite" && !!plan.inviteToken;
             if (dbMode) {
               const saved = await insertPlan(plan);
-              if (saved) setDbPlans((prev) => [saved, ...prev]);
+              if (!saved) {
+                // BF-10: never claim success if the insert failed.
+                showToast("Couldn’t publish your plan. Please try again.");
+                return;
+              }
+              setDbPlans((prev) => [saved, ...prev]);
             } else {
               setMyPlans((prev) => [plan, ...prev]);
               // Invite plans are private (link-shared) — don't broadcast to the match bus / feed.
@@ -1417,11 +1502,10 @@ export default function DemoPage() {
             }
             setCreateOpen(false);
             if (isInvite) {
-              // Show the shareable link right away instead of posting to the feed.
               setInviteLinkPlan(plan);
             } else {
               setView("plans");
-              addNotif({ emoji: "✅", text: "Your plan is live. People who fit can now ask to join.", tone: "match" });
+              addNotif({ emoji: "✅", text: "Your plan is published.", tone: "match" });
             }
           }}
         />
@@ -1429,20 +1513,31 @@ export default function DemoPage() {
 
       {createTripOpen && (
         <CreateTripModal
+          author={
+            isDemo
+              ? { name: PERSONA_PROFILES[persona].name, emoji: PERSONA_PROFILES[persona].emoji, age: PERSONA_PROFILES[persona].age }
+              : { name: dbProfile?.name || session.name || "You", emoji: "🧑", age: 0 }
+          }
           onClose={() => setCreateTripOpen(false)}
           onPost={async (trip) => {
             if (dbMode) {
               const saved = await insertTrip(trip);
-              if (saved) setDbTrips((prev) => [saved, ...prev]);
+              if (!saved) {
+                showToast("Couldn’t publish your trip. Please try again.");
+                return;
+              }
+              setDbTrips((prev) => [saved, ...prev]);
             } else {
               setMyTrips((prev) => [trip, ...prev]);
             }
             setCreateTripOpen(false);
             setView("travel");
-            addNotif({ emoji: "✈️", text: "Your trip is live. We’ll match travellers by dates, budget, and style.", tone: "match" });
+            addNotif({ emoji: "✈️", text: "Trip published. People can now request to join.", tone: "match" });
           }}
         />
       )}
+
+      {toast && <div className="toast">{toast}</div>}
 
       {inviteLinkPlan && (
         <div className="modal-overlay" onClick={() => setInviteLinkPlan(null)}>
@@ -1497,6 +1592,11 @@ export default function DemoPage() {
             setOpenProfile(null);
             void startChatWith(toUser);
           }}
+          onProposed={(name) => {
+            setOpenProfile(null);
+            setView("meetings");
+            addNotif({ emoji: "📅", text: `Meeting proposed to ${name}. Awaiting their confirmation.`, tone: "pending" });
+          }}
         />
       )}
     </div>
@@ -1514,6 +1614,7 @@ function ProfileModal({
   onClose,
   onSendFriend,
   onMessage,
+  onProposed,
 }: {
   uid: string | null;
   dbMode: boolean;
@@ -1523,10 +1624,19 @@ function ProfileModal({
   onClose: () => void;
   onSendFriend: (toUser: string, name: string) => void;
   onMessage: (toUser: string) => void;
+  onProposed: (name: string) => void;
 }) {
   const [loaded, setLoaded] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  // Mutual-availability flow
+  const [mutual, setMutual] = useState<MutualSlot[] | null>(null);
+  const [mutualLoading, setMutualLoading] = useState(false);
+  const [mutualErr, setMutualErr] = useState(false);
+  const [chosen, setChosen] = useState<number | null>(null);
+  const [mActivity, setMActivity] = useState("");
+  const [mPlace, setMPlace] = useState("");
+  const [proposing, setProposing] = useState(false);
 
   useEffect(() => {
     if (dbMode && profileId) {
@@ -1621,6 +1731,73 @@ function ProfileModal({
                   </div>
                 </>
               )}
+              {dbMode && rel === "friends" && profileId && (
+                <div className="mutualbox">
+                  <div className="sectionlabel" style={{ marginTop: 6 }}>Plan a meeting</div>
+                  {mutual === null ? (
+                    <button
+                      className="matchbtn"
+                      disabled={mutualLoading}
+                      onClick={async () => {
+                        setMutualLoading(true);
+                        setMutualErr(false);
+                        try {
+                          setMutual(await getMutualAvailability(profileId));
+                        } catch {
+                          setMutualErr(true);
+                        }
+                        setMutualLoading(false);
+                      }}
+                    >
+                      {mutualLoading ? "Finding…" : "🕒 Find time you’re both free"}
+                    </button>
+                  ) : mutualErr ? (
+                    <div className="note">
+                      Couldn’t load times. <button className="linkbtn" onClick={() => setMutual(null)}>Try again</button>
+                    </div>
+                  ) : mutual.length === 0 ? (
+                    <div className="note">No shared free time yet. Ask them to add hours, or add more of your own in “My free time”.</div>
+                  ) : (
+                    <>
+                      <div className="mutualtitle">✨ You both have time! Pick one:</div>
+                      {mutual.map((m, i) => (
+                        <button key={i} className={`mutualcard${chosen === i ? " sel" : ""}${i === 0 ? " best" : ""}`} onClick={() => setChosen(i)}>
+                          {i === 0 && <span className="besttag">Best fit</span>}
+                          <strong>{mutualDateLabel(m.startsAt)}</strong>
+                          <span>{mutualTimeLabel(m.startsAt)} – {mutualTimeLabel(m.endsAt)} · {Math.round(m.minutes / 60 * 10) / 10}h together</span>
+                        </button>
+                      ))}
+                      {chosen !== null && (
+                        <div className="proposeform">
+                          <div className="pickrow">
+                            {["Coffee", "Walk", "Food", "Other"].map((a) => (
+                              <button key={a} className={`chip${mActivity === a ? " sel" : ""}`} onClick={() => setMActivity(a)}>{a}</button>
+                            ))}
+                          </div>
+                          <input className="custominput" placeholder="Where? (place or address)" value={mPlace} onChange={(e) => setMPlace(e.target.value)} />
+                          <button
+                            className="continue"
+                            disabled={proposing}
+                            onClick={async () => {
+                              setProposing(true);
+                              const slot = mutual[chosen];
+                              const res = await proposeMeeting({ toUser: profileId, startsAt: slot.startsAt, endsAt: slot.endsAt, activity: mActivity || undefined, place: mPlace || undefined });
+                              setProposing(false);
+                              if (res.error) return;
+                              onProposed(name);
+                            }}
+                          >
+                            {proposing ? "Sending…" : "Propose this meeting →"}
+                          </button>
+                        </div>
+                      )}
+                      <div className="note" style={{ marginTop: 10 }}>
+                        🔒 We only show shared free time. Your full schedule stays private.
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="note" style={{ marginTop: 18 }}>
                 Private info (email, exact schedule, friends list) is never shown here.
               </div>
@@ -1712,7 +1889,7 @@ function PlanCard(props: {
             {liked ? "♥ Liked" : "♡ Like"}
           </button>
           <button className="matchbtn" disabled={requested} onClick={onJoin}>
-            {requested ? "Requested ✓" : "I’m in →"}
+            {requested ? "Request sent · Pending" : "Request to join"}
           </button>
         </div>
       )}
@@ -1952,6 +2129,13 @@ function ProfileView({ session, demo, persona, profile }: { session: typeof TEST
 }
 
 /* ---------------- Create plan modal ---------------- */
+
+function mutualDateLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+}
+function mutualTimeLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
 
 /** Best-effort parse of a plan's "Sat · 11:00 AM" label into date + hour. */
 function parsePlanSlot(plan: DemoPlan): { date: string; hour: number } {
@@ -2281,7 +2465,7 @@ function TripCard(props: {
             Pass
           </button>
           <button className="matchbtn" disabled={requested} onClick={onJoin}>
-            {requested ? "Requested ✓" : "I’m in →"}
+            {requested ? "Request sent · Pending" : "Request to join"}
           </button>
         </div>
       )}
@@ -2300,7 +2484,7 @@ const TRIP_MONTHS = [
 ];
 const TRIP_STEPS = 5;
 
-function CreateTripModal({ onClose, onPost }: { onClose: () => void; onPost: (trip: DemoTrip) => void }) {
+function CreateTripModal({ onClose, onPost, author }: { onClose: () => void; onPost: (trip: DemoTrip) => void; author: { name: string; emoji: string; age: number } }) {
   const [step, setStep] = useState(0);
   const [destination, setDestination] = useState("");
   const [dateMode, setDateMode] = useState<DateMode>("exact");
@@ -2344,9 +2528,9 @@ function CreateTripModal({ onClose, onPost }: { onClose: () => void; onPost: (tr
     const month = TRIP_MONTHS[monthIdx];
     onPost({
       id: `trip-${Date.now()}`,
-      name: TEST_PROFILE.name,
-      emoji: TEST_PROFILE.emoji,
-      age: TEST_PROFILE.age,
+      name: author.name,
+      emoji: author.emoji,
+      age: author.age,
       destination: destination.trim(),
       dateMode,
       start: dateMode === "exact" ? start : dateMode === "flexible" ? month.start : undefined,

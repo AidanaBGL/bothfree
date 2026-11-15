@@ -238,6 +238,130 @@ export function subscribeTable(table: string, cb: () => void): () => void {
   };
 }
 
+// ---- Availability calendar ------------------------------------------
+export interface AvailabilitySlot {
+  id: string;
+  startsAt: string; // ISO UTC
+  endsAt: string;
+}
+
+export async function fetchMyAvailability(): Promise<AvailabilitySlot[]> {
+  const supabase = createClient();
+  const me = (await supabase.auth.getUser()).data.user?.id;
+  if (!me) return [];
+  const { data } = await supabase
+    .from("availability_slots")
+    .select("id, starts_at, ends_at")
+    .eq("user_id", me)
+    .order("starts_at", { ascending: true });
+  return ((data as { id: string; starts_at: string; ends_at: string }[] | null) ?? []).map((r) => ({
+    id: r.id,
+    startsAt: r.starts_at,
+    endsAt: r.ends_at,
+  }));
+}
+
+export async function addAvailability(startsAt: string, endsAt: string): Promise<{ error?: string; slot?: AvailabilitySlot }> {
+  const supabase = createClient();
+  const me = (await supabase.auth.getUser()).data.user?.id;
+  if (!me) return { error: "Not signed in" };
+  const { data, error } = await supabase
+    .from("availability_slots")
+    .insert({ user_id: me, starts_at: startsAt, ends_at: endsAt })
+    .select("id, starts_at, ends_at")
+    .single();
+  if (error || !data) return { error: error?.message ?? "Could not save" };
+  const r = data as { id: string; starts_at: string; ends_at: string };
+  return { slot: { id: r.id, startsAt: r.starts_at, endsAt: r.ends_at } };
+}
+
+export async function deleteAvailability(id: string): Promise<{ error?: string }> {
+  const { error } = await createClient().from("availability_slots").delete().eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
+export interface MutualSlot {
+  startsAt: string;
+  endsAt: string;
+  minutes: number;
+}
+
+/** Secure RPC: returns only the overlapping intervals, never the full schedule. */
+export async function getMutualAvailability(otherUserId: string): Promise<MutualSlot[]> {
+  const { data, error } = await createClient().rpc("get_mutual_availability", { other_user_id: otherUserId });
+  if (error || !data) return [];
+  return (data as { starts_at: string; ends_at: string; minutes: number }[]).map((r) => ({
+    startsAt: r.starts_at,
+    endsAt: r.ends_at,
+    minutes: r.minutes,
+  }));
+}
+
+// ---- Meeting proposals ----------------------------------------------
+export interface MeetingProposal {
+  id: string;
+  fromUser: string;
+  toUser: string;
+  startsAt: string;
+  endsAt: string;
+  activity: string | null;
+  place: string | null;
+  details: string | null;
+  status: "pending" | "accepted" | "declined" | "cancelled";
+}
+
+export async function proposeMeeting(p: {
+  toUser: string;
+  startsAt: string;
+  endsAt: string;
+  activity?: string;
+  place?: string;
+  details?: string;
+}): Promise<{ error?: string }> {
+  const supabase = createClient();
+  const from = (await supabase.auth.getUser()).data.user?.id;
+  if (!from) return { error: "Not signed in" };
+  const { error } = await supabase.from("meeting_proposals").insert({
+    from_user: from,
+    to_user: p.toUser,
+    starts_at: p.startsAt,
+    ends_at: p.endsAt,
+    activity: p.activity ?? null,
+    place: p.place ?? null,
+    details: p.details ?? null,
+  });
+  // Unique index violation (duplicate) is fine — treat as already sent.
+  if (error && !/duplicate|unique/i.test(error.message)) return { error: error.message };
+  return {};
+}
+
+export async function fetchMeetingProposals(uid: string): Promise<MeetingProposal[]> {
+  const { data } = await createClient()
+    .from("meeting_proposals")
+    .select("id, from_user, to_user, starts_at, ends_at, activity, place, details, status")
+    .or(`from_user.eq.${uid},to_user.eq.${uid}`)
+    .order("starts_at", { ascending: true });
+  return ((data as Record<string, string>[] | null) ?? []).map((r) => ({
+    id: r.id,
+    fromUser: r.from_user,
+    toUser: r.to_user,
+    startsAt: r.starts_at,
+    endsAt: r.ends_at,
+    activity: r.activity ?? null,
+    place: r.place ?? null,
+    details: r.details ?? null,
+    status: r.status as MeetingProposal["status"],
+  }));
+}
+
+export async function respondMeetingProposal(id: string, accept: boolean): Promise<{ error?: string }> {
+  const { error } = await createClient()
+    .from("meeting_proposals")
+    .update({ status: accept ? "accepted" : "declined" })
+    .eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
 export async function fetchMyProfile(): Promise<DbProfile | null> {
   const supabase = createClient();
   const u = (await supabase.auth.getUser()).data.user;
