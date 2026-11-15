@@ -1770,7 +1770,7 @@ function ProfileModal({
                   </div>
                 </>
               )}
-              {dbMode && rel === "friends" && profileId && (
+              {false && dbMode && rel === "friends" && profileId && (
                 <div className="mutualbox">
                   <div className="sectionlabel" style={{ marginTop: 6 }}>Plan a meeting</div>
                   {mutual === null ? (
