@@ -2053,3 +2053,58 @@ nav a:hover {
   user-select: none;
   pointer-events: none;
 }
+
+/* ---- Address autocomplete ---- */
+.addrwrap {
+  position: relative;
+}
+.addrlist {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.addritem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 11px 14px;
+  font-size: 13px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.addritem:last-child {
+  border-bottom: 0;
+}
+.addritem:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---- Clickable name / avatar in cards ---- */
+.namelink {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 2px;
+}
+.namelink:hover {
+  color: var(--accent);
+}
+.avatar.clickable:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

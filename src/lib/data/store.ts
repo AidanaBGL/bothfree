@@ -87,6 +87,78 @@ interface ProfileRow {
   lgbtq_friendly: boolean | null;
 }
 
+export interface PublicProfile extends DbProfile {
+  id: string;
+}
+
+/** Any user's public-safe profile (name, bio, interests, city). Never exposes
+ *  email, DOB, phone, or their friends list. */
+export async function fetchProfileById(userId: string): Promise<PublicProfile | null> {
+  const { data } = await createClient()
+    .from("profiles")
+    .select("id, name, bio, interests, city, area_id, lgbtq_friendly")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!data) return null;
+  const r = data as ProfileRow & { id: string };
+  return {
+    id: r.id,
+    name: r.name ?? "BothFree member",
+    bio: r.bio ?? "",
+    interests: r.interests ?? [],
+    city: r.city ?? "New York",
+    areaId: r.area_id ?? null,
+    lgbtqFriendly: Boolean(r.lgbtq_friendly),
+  };
+}
+
+// ---- Friends --------------------------------------------------------
+export type FriendStatus = "none" | "pending_out" | "pending_in" | "friends";
+
+export interface FriendRequestRow {
+  id: string;
+  from_user: string;
+  to_user: string;
+  status: "pending" | "accepted" | "declined";
+}
+
+/** All friend rows touching the current user (both directions). */
+export async function fetchFriendRows(uid: string): Promise<FriendRequestRow[]> {
+  const { data } = await createClient()
+    .from("friend_requests")
+    .select("id, from_user, to_user, status")
+    .or(`from_user.eq.${uid},to_user.eq.${uid}`);
+  return (data as FriendRequestRow[] | null) ?? [];
+}
+
+export async function sendFriendRequest(toUser: string): Promise<{ error?: string }> {
+  const supabase = createClient();
+  const from = (await supabase.auth.getUser()).data.user?.id;
+  if (!from) return { error: "Not signed in" };
+  if (from === toUser) return { error: "That's you" };
+  const { error } = await supabase.from("friend_requests").insert({ from_user: from, to_user: toUser, status: "pending" });
+  return error ? { error: error.message } : {};
+}
+
+export async function respondFriendRequest(id: string, accept: boolean): Promise<{ error?: string }> {
+  const { error } = await createClient()
+    .from("friend_requests")
+    .update({ status: accept ? "accepted" : "declined" })
+    .eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
+/** Derive this user's relationship to another user from the friend rows. */
+export function statusFor(rows: FriendRequestRow[], uid: string, otherId: string): { status: FriendStatus; requestId?: string } {
+  const row = rows.find(
+    (r) => (r.from_user === uid && r.to_user === otherId) || (r.from_user === otherId && r.to_user === uid),
+  );
+  if (!row) return { status: "none" };
+  if (row.status === "accepted") return { status: "friends", requestId: row.id };
+  if (row.status === "declined") return { status: "none", requestId: row.id };
+  return { status: row.from_user === uid ? "pending_out" : "pending_in", requestId: row.id };
+}
+
 export async function fetchMyProfile(): Promise<DbProfile | null> {
   const supabase = createClient();
   const u = (await supabase.auth.getUser()).data.user;

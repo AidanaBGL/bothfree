@@ -27,7 +27,22 @@ import { dateOverlap, budgetOverlap, formatOverlap } from "@/lib/travel/overlap"
 import { INCOMING_REQUESTS, FRIEND_SUGGESTIONS, type Person } from "@/lib/demo/friends";
 import { SEED_CONVERSATIONS, CANNED_REPLIES, type Conversation } from "@/lib/demo/messages";
 import { supabaseConfigured, authSignUp, authVerify, authSignIn, authSignOut, authCurrentUser } from "@/lib/auth/actions";
-import { getUserId, fetchPlans, insertPlan, fetchTrips, insertTrip, fetchMyProfile, type DbProfile } from "@/lib/data/store";
+import {
+  getUserId,
+  fetchPlans,
+  insertPlan,
+  fetchTrips,
+  insertTrip,
+  fetchMyProfile,
+  fetchProfileById,
+  fetchFriendRows,
+  sendFriendRequest,
+  respondFriendRequest,
+  statusFor,
+  type DbProfile,
+  type PublicProfile,
+  type FriendRequestRow,
+} from "@/lib/data/store";
 import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from "@/lib/demo/matchbus";
 import { SPARK_QUESTIONS } from "@/lib/demo/sparkQuestions";
 
@@ -118,6 +133,9 @@ export default function DemoPage() {
   const [dbPlans, setDbPlans] = useState<DemoPlan[]>([]);
   const [dbTrips, setDbTrips] = useState<DemoTrip[]>([]);
   const [dbProfile, setDbProfile] = useState<DbProfile | null>(null);
+  const [friendRows, setFriendRows] = useState<FriendRequestRow[]>([]);
+  const [peopleMap, setPeopleMap] = useState<Record<string, string>>({});
+  const [openProfile, setOpenProfile] = useState<{ id?: string; plan?: DemoPlan } | null>(null);
 
   // Cross-account match bus (jury ↔ demo persona)
   const [bus, setBus] = useState<BusPost[]>([]);
@@ -175,11 +193,27 @@ export default function DemoPage() {
       const id = await getUserId();
       if (!active) return;
       setUid(id);
-      const [pl, tr, prof] = await Promise.all([fetchPlans(), fetchTrips(id), fetchMyProfile()]);
+      const [pl, tr, prof, fr] = await Promise.all([
+        fetchPlans(),
+        fetchTrips(id),
+        fetchMyProfile(),
+        id ? fetchFriendRows(id) : Promise.resolve([]),
+      ]);
       if (!active) return;
       setDbPlans(pl);
       setDbTrips(tr);
       setDbProfile(prof);
+      setFriendRows(fr);
+      // Resolve names of everyone in the friend graph.
+      const otherIds = Array.from(new Set(fr.flatMap((r) => [r.from_user, r.to_user]).filter((x) => x !== id)));
+      const map: Record<string, string> = {};
+      await Promise.all(
+        otherIds.map(async (oid) => {
+          const p = await fetchProfileById(oid);
+          if (p) map[oid] = p.name;
+        }),
+      );
+      if (active) setPeopleMap(map);
     })();
     return () => {
       active = false;
@@ -334,6 +368,33 @@ export default function DemoPage() {
   }
   function declineFriend(p: Person) {
     setIncoming((prev) => prev.filter((x) => x.id !== p.id));
+  }
+
+  // ---- Real (Supabase) friend operations ----
+  async function refreshFriends() {
+    if (!uid) return;
+    const rows = await fetchFriendRows(uid);
+    setFriendRows(rows);
+    const otherIds = Array.from(new Set(rows.flatMap((r) => [r.from_user, r.to_user]).filter((id) => id !== uid)));
+    const map: Record<string, string> = {};
+    await Promise.all(
+      otherIds.map(async (id) => {
+        const p = await fetchProfileById(id);
+        if (p) map[id] = p.name;
+      }),
+    );
+    setPeopleMap(map);
+  }
+  async function dbSendFriend(toUser: string, name: string) {
+    const res = await sendFriendRequest(toUser);
+    if (res.error) return addNotif({ emoji: "⚠️", text: res.error, tone: "pending" });
+    await refreshFriends();
+    addNotif({ emoji: "📨", text: `Friend request sent to ${name}.`, tone: "pending" });
+  }
+  async function dbRespondFriend(requestId: string, accept: boolean, name: string) {
+    await respondFriendRequest(requestId, accept);
+    await refreshFriends();
+    if (accept) addNotif({ emoji: "🤝", text: `You and ${name} are now friends.`, tone: "match" });
   }
 
   function openConversation(id: string) {
@@ -779,6 +840,7 @@ export default function DemoPage() {
                   onToggleHelper={() => setHelperFor(helperFor === p.id ? null : p.id)}
                   onUpgrade={() => setPremium(true)}
                   onCopyInvite={() => copyInvite(p)}
+                  onOpenProfile={() => setOpenProfile({ id: dbMode ? p.ownerId : undefined, plan: p })}
                 />
               ))}
               {visiblePlans.length === 0 && (
@@ -871,6 +933,62 @@ export default function DemoPage() {
               </div>
             </div>
 
+            {dbMode ? (
+              (() => {
+                const incomingDb = friendRows.filter((r) => r.status === "pending" && r.to_user === uid);
+                const friendsDb = friendRows.filter((r) => r.status === "accepted");
+                const other = (r: FriendRequestRow) => (r.from_user === uid ? r.to_user : r.from_user);
+                return (
+                  <>
+                    {incomingDb.length > 0 && (
+                      <>
+                        <div className="sectionlabel">Friend requests</div>
+                        <div className="frlist">
+                          {incomingDb.map((r) => (
+                            <div className="frow" key={r.id}>
+                              <div className="avatar">🧑</div>
+                              <div className="frow-id">
+                                <strong>{peopleMap[other(r)] ?? "BothFree member"}</strong>
+                                <span className="frow-blurb">wants to be your friend</span>
+                              </div>
+                              <div className="frow-actions">
+                                <button className="passbtn" onClick={() => dbRespondFriend(r.id, false, peopleMap[other(r)] ?? "member")}>
+                                  Decline
+                                </button>
+                                <button className="matchbtn" onClick={() => dbRespondFriend(r.id, true, peopleMap[other(r)] ?? "member")}>
+                                  Accept
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    <div className="sectionlabel">Your friends · {friendsDb.length}</div>
+                    {friendsDb.length === 0 ? (
+                      <div className="note">No friends yet. Open someone’s profile from a plan and send a request.</div>
+                    ) : (
+                      <div className="frlist">
+                        {friendsDb.map((r) => (
+                          <div className="frow" key={r.id}>
+                            <div className="avatar">🧑</div>
+                            <div className="frow-id">
+                              <strong>{peopleMap[other(r)] ?? "BothFree member"}</strong>
+                              <span className="frow-blurb">Friends</span>
+                            </div>
+                            <span className="eventbadge">✓ Friends</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="note" style={{ marginTop: 16 }}>
+                      To add friends, open a person’s profile from their plan in Discover and tap “Add friend.”
+                    </div>
+                  </>
+                );
+              })()
+            ) : (
+              <>
             {incoming.length > 0 && (
               <>
                 <div className="sectionlabel">Friend requests</div>
@@ -919,6 +1037,8 @@ export default function DemoPage() {
               </div>
             ) : (
               <div className="note">No suggestions yet — we’ll surface people as the community grows.</div>
+            )}
+              </>
             )}
           </>
         )}
@@ -1038,6 +1158,11 @@ export default function DemoPage() {
 
       {createOpen && (
         <CreatePlanModal
+          author={
+            isDemo
+              ? { name: TEST_PROFILE.name, emoji: TEST_PROFILE.emoji, age: TEST_PROFILE.age }
+              : { name: dbProfile?.name || session.name || "You", emoji: "🧑" }
+          }
           onClose={() => setCreateOpen(false)}
           onTravel={() => {
             setCreateOpen(false);
@@ -1078,6 +1203,143 @@ export default function DemoPage() {
           }}
         />
       )}
+
+      {openProfile && (
+        <ProfileModal
+          uid={uid}
+          dbMode={dbMode}
+          plan={openProfile.plan}
+          profileId={openProfile.id}
+          friendRows={friendRows}
+          onClose={() => setOpenProfile(null)}
+          onSendFriend={(toUser, name) => dbSendFriend(toUser, name)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Profile modal (open someone's profile) ---------------- */
+
+function ProfileModal({
+  uid,
+  dbMode,
+  plan,
+  profileId,
+  friendRows,
+  onClose,
+  onSendFriend,
+}: {
+  uid: string | null;
+  dbMode: boolean;
+  plan?: DemoPlan;
+  profileId?: string;
+  friendRows: FriendRequestRow[];
+  onClose: () => void;
+  onSendFriend: (toUser: string, name: string) => void;
+}) {
+  const [loaded, setLoaded] = useState<PublicProfile | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    if (dbMode && profileId) {
+      setLoading(true);
+      fetchProfileById(profileId).then((p) => {
+        setLoaded(p);
+        setLoading(false);
+      });
+    }
+  }, [dbMode, profileId]);
+
+  const name = loaded?.name ?? plan?.name ?? "BothFree member";
+  const emoji = plan?.emoji ?? "🧑";
+  const bio = loaded?.bio || plan?.note || "This member hasn’t added a bio yet.";
+  const interests = loaded?.interests ?? (plan ? [plan.activityId] : []);
+  const city = loaded?.city ?? "New York";
+
+  const rel = dbMode && profileId && uid ? statusFor(friendRows, uid, profileId).status : "none";
+
+  function friendButton() {
+    if (!dbMode) {
+      return (
+        <button className="matchbtn" disabled={sent} onClick={() => setSent(true)}>
+          {sent ? "Request sent ✓" : "＋ Add friend"}
+        </button>
+      );
+    }
+    if (!profileId) return <span className="eventbadge">Profile unavailable</span>;
+    if (rel === "friends") return <span className="eventbadge">✓ Friends</span>;
+    if (rel === "pending_out" || sent) return <span className="eventbadge">Requested</span>;
+    if (rel === "pending_in") return <span className="eventbadge">Wants to be friends — see Friends tab</span>;
+    return (
+      <button
+        className="matchbtn"
+        onClick={() => {
+          setSent(true);
+          onSendFriend(profileId, name);
+        }}
+      >
+        ＋ Add friend
+      </button>
+    );
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <div className="modal-head">
+          <h2>Profile</h2>
+          <button className="closebtn" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </div>
+        <div className="modal-body">
+          {loading ? (
+            <p className="sub">Loading…</p>
+          ) : (
+            <>
+              <div className="profiletop">
+                <div className="avatar big">{emoji}</div>
+                <div>
+                  <h2 className="profilename">
+                    {name}
+                    {plan && !dbMode ? `, ${plan.age}` : ""}
+                  </h2>
+                  <div className="pcard-area">📍 {city}</div>
+                </div>
+              </div>
+              <p className="pcard-bio">{bio}</p>
+              {loaded?.lgbtqFriendly && (
+                <div className="badgerow">
+                  <span className="rainbowbadge">🏳️‍🌈 LGBTQ+ friendly</span>
+                </div>
+              )}
+              {interests.length > 0 && (
+                <>
+                  <div className="sectionlabel">Interests</div>
+                  <div className="tagrow">
+                    {interests.map((id) => (
+                      <span className="tag" key={id}>
+                        {activityById(id)?.emoji} {activityById(id)?.label ?? id}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="note" style={{ marginTop: 18 }}>
+                Private info (email, exact schedule, friends list) is never shown here.
+              </div>
+            </>
+          )}
+        </div>
+        <div className="modal-foot">
+          <button className="passbtn" onClick={onClose}>
+            Close
+          </button>
+          {friendButton()}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1097,18 +1359,33 @@ function PlanCard(props: {
   onToggleHelper: () => void;
   onUpgrade: () => void;
   onCopyInvite?: () => void;
+  onOpenProfile?: () => void;
 }) {
-  const { plan, premium, liked, requested, mine, helperOpen, onLike, onPass, onJoin, onToggleHelper, onUpgrade, onCopyInvite } = props;
+  const { plan, premium, liked, requested, mine, helperOpen, onLike, onPass, onJoin, onToggleHelper, onUpgrade, onCopyInvite, onOpenProfile } = props;
   const activity = activityById(plan.activityId);
   const area = areaById(plan.areaId);
+  const clickable = !mine && !!onOpenProfile;
 
   return (
     <article className="pcard">
       <div className="pcard-top">
-        <div className="avatar">{plan.emoji}</div>
+        <button
+          className={`avatar${clickable ? " clickable" : ""}`}
+          onClick={clickable ? onOpenProfile : undefined}
+          style={{ border: "none", cursor: clickable ? "pointer" : "default" }}
+          aria-label={clickable ? `Open ${plan.name}'s profile` : undefined}
+        >
+          {plan.emoji}
+        </button>
         <div className="pcard-id">
           <strong>
-            {plan.name}
+            {clickable ? (
+              <button className="namelink" onClick={onOpenProfile}>
+                {plan.name}
+              </button>
+            ) : (
+              plan.name
+            )}
             {!mine && `, ${plan.age}`}
             {mine && <span className="minetag"> · you</span>}
           </strong>
@@ -1404,12 +1681,13 @@ const CREATE_MODES: { id: Mode; emoji: string; title: string; desc: string }[] =
   { id: "dating", emoji: "💚", title: "Find a date", desc: "Meet someone new for a date." },
 ];
 
-function CreatePlanModal({ onClose, onPost, onTravel }: { onClose: () => void; onPost: (plan: DemoPlan) => void; onTravel: () => void }) {
+function CreatePlanModal({ onClose, onPost, onTravel, author }: { onClose: () => void; onPost: (plan: DemoPlan) => void; onTravel: () => void; author: { name: string; emoji: string; age?: number } }) {
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<Mode | "">("");
   const [groupSize, setGroupSize] = useState(1);
   const [activity, setActivity] = useState("");
   const [area, setArea] = useState("");
+  const [customArea, setCustomArea] = useState("");
   const [days, setDays] = useState<string[]>([]);
   const [slots, setSlots] = useState<Record<string, number[]>>({});
   const [budget, setBudget] = useState(40);
@@ -1417,6 +1695,9 @@ function CreatePlanModal({ onClose, onPost, onTravel }: { onClose: () => void; o
   const [note, setNote] = useState("");
 
   const hasSlot = Object.values(slots).some((hrs) => hrs.length > 0);
+  const typedArea = customArea.trim();
+  const effectiveArea = typedArea ? "custom" : area;
+  const areaDisplay = typedArea || areaById(area)?.label || "somewhere in NYC";
 
   // "Find a new friend" inserts a group-size step right after the mode step.
   const stepKeys = ["mode", ...(mode === "friendship" ? ["groupSize"] : []), "activity", "days", "times", "area", "budget"];
@@ -1443,12 +1724,12 @@ function CreatePlanModal({ onClose, onPost, onTravel }: { onClose: () => void; o
 
     onPost({
       id: `mine-${Date.now()}`,
-      name: TEST_PROFILE.name,
-      emoji: TEST_PROFILE.emoji,
-      age: TEST_PROFILE.age,
+      name: author.name,
+      emoji: author.emoji,
+      age: author.age ?? 0,
       activityId: activity,
       areaId: effectiveArea,
-      areaLabel: customRing ? "Custom area" : areaById(area)?.label,
+      areaLabel: typedArea || areaById(area)?.label,
       dateTag,
       whenLabel,
       budgetLabel,
@@ -1456,9 +1737,7 @@ function CreatePlanModal({ onClose, onPost, onTravel }: { onClose: () => void; o
       groupSize: mode === "friendship" ? groupSize : undefined,
       mode: mode || undefined,
       inviteToken: mode === "invite" ? Math.random().toString(36).slice(2, 10) : undefined,
-      note:
-        note.trim() ||
-        `${activityById(activity)?.label} in ${customRing ? "a custom area" : areaById(area)?.label}. Come say hi!`,
+      note: note.trim() || `${activityById(activity)?.label} in ${areaDisplay}. Come say hi!`,
       likesYouBack: false,
     });
   }
@@ -1557,22 +1836,22 @@ function CreatePlanModal({ onClose, onPost, onTravel }: { onClose: () => void; o
             {current === "area" && (
               <>
                 <h2>Where should it be? 📍</h2>
-                <p className="sub">Pick an area, or draw your exact spot on the map.</p>
+                <p className="sub">Pick an area, or type your own place.</p>
                 <div className="pickrow">
                   {AREAS.filter((a) => a.id !== "anywhere").map((a) => (
                     <button
                       key={a.id}
-                      className={`chip${!customRing && area === a.id ? " sel" : ""}`}
+                      className={`chip${!typedArea && area === a.id ? " sel" : ""}`}
                       onClick={() => setArea(a.id)}
-                      disabled={!!customRing}
+                      disabled={!!typedArea}
                     >
                       {a.emoji} {a.label}
                     </button>
                   ))}
                 </div>
-                <div className="sectionlabel">…or draw your exact area</div>
-                <AreaMap onChange={setCustomRing} />
-                {customRing && <div className="drawhint">✅ Using your drawn area. Clear the map to pick a preset.</div>}
+                <div className="sectionlabel">…or type a neighborhood or address</div>
+                <AddressInput value={customArea} onChange={setCustomArea} placeholder="e.g. Williamsburg, Brooklyn" />
+                {typedArea && <div className="drawhint">📍 Using “{typedArea}”. Clear the field to pick a preset.</div>}
               </>
             )}
 
