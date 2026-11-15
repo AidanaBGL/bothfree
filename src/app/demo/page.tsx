@@ -51,7 +51,6 @@ import {
 import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from "@/lib/demo/matchbus";
 import { SPARK_QUESTIONS } from "@/lib/demo/sparkQuestions";
 import { PERSONA_PROFILES, PERSONA_SELF_CARD } from "@/lib/demo/personas";
-import { AvailabilityEditor } from "@/components/AvailabilityEditor";
 import { getMutualAvailability, proposeMeeting, fetchMeetingProposals, respondMeetingProposal, fetchNotifications, markNotificationsRead, type MutualSlot, type MeetingProposal, type DbNotification } from "@/lib/data/store";
 import { seedMeetings, slotLabel, dateLabel, hourLabel, daysUntil, type Meeting } from "@/lib/demo/meetings";
 import { buildIcs } from "@/lib/calendar/ics";
@@ -65,7 +64,7 @@ interface Session {
 }
 const TEST_IDENTITY: Session = { name: TEST_PROFILE.name, email: "demo@bothfree.app", kind: "demo" };
 
-type View = "feed" | "travel" | "friends" | "messages" | "spark" | "meetings" | "availability" | "plans" | "profile";
+type View = "feed" | "travel" | "friends" | "messages" | "spark" | "meetings" | "plans" | "profile";
 type Mode = "invite" | "friendship" | "dating";
 
 interface Notif {
@@ -1430,25 +1429,7 @@ export default function DemoPage() {
           </>
         )}
 
-        {view === "availability" && (
-          <>
-            <div className="contenthead">
-              <div>
-                <h1 className="pagetitle">When are you free? 🕒</h1>
-                <p className="sub">Pick your days and hours. We’ll find time that works for both of you — your full schedule stays private.</p>
-              </div>
-            </div>
-            {dbMode ? (
-              <div style={{ maxWidth: 720 }}>
-                <AvailabilityEditor onToast={showToast} />
-              </div>
-            ) : (
-              <div className="note" style={{ maxWidth: 620 }}>
-                Setting real free time needs a signed-in account. Use <b>Log In / Sign Up</b> — then availability saves to the database and powers the “When you’re both free” matching.
-              </div>
-            )}
-          </>
-        )}
+
 
         {view === "meetings" && (
           <>
