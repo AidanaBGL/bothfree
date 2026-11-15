@@ -24,8 +24,8 @@ export interface BusPost {
 const KEY = "bf-demo-matchbus";
 
 export const PERSONAS: Record<Persona, { name: string; emoji: string }> = {
-  jury: { name: "Daniel", emoji: "🧑🏻" },
-  demo: { name: "Mia", emoji: "👩🏻" },
+  jury: { name: "Alia", emoji: "👩🏻" },
+  demo: { name: "Madina", emoji: "👩🏽" },
 };
 
 export function readBus(): BusPost[] {

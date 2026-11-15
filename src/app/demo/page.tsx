@@ -50,6 +50,7 @@ import {
 } from "@/lib/data/store";
 import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from "@/lib/demo/matchbus";
 import { SPARK_QUESTIONS } from "@/lib/demo/sparkQuestions";
+import { PERSONA_PROFILES, PERSONA_SELF_CARD } from "@/lib/demo/personas";
 import { seedMeetings, slotLabel, dateLabel, hourLabel, daysUntil, type Meeting } from "@/lib/demo/meetings";
 import { buildIcs } from "@/lib/calendar/ics";
 
@@ -160,6 +161,7 @@ export default function DemoPage() {
   // Create modals
   const [createOpen, setCreateOpen] = useState(false);
   const [createTripOpen, setCreateTripOpen] = useState(false);
+  const [inviteLinkPlan, setInviteLinkPlan] = useState<DemoPlan | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -306,10 +308,10 @@ export default function DemoPage() {
     startSession({ name: TEST_IDENTITY.name, email: email.trim() || TEST_IDENTITY.email, kind: "registered" });
   }
   function enterJury() {
-    startSession({ name: "Jury", email: "jury@bothfree.app", kind: "jury" });
+    startSession({ name: PERSONA_PROFILES.jury.name, email: "jury@bothfree.app", kind: "jury" });
   }
   function enterDemoUser() {
-    startSession({ name: TEST_PROFILE.name, email: "demo@bothfree.app", kind: "demo" });
+    startSession({ name: PERSONA_PROFILES.demo.name, email: "demo@bothfree.app", kind: "demo" });
   }
   async function signUp() {
     setAuthError(null);
@@ -585,25 +587,30 @@ export default function DemoPage() {
   const tripDestinations = useMemo(() => Array.from(new Set(DEMO_TRIPS.map((t) => t.destination))), []);
 
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
+  // Invite-mode plans are private (link-shared), so they never go in the public feed.
+  const publicMyPlans = myPlans.filter((p) => p.mode !== "invite");
+  const persona: Persona = session?.kind === "jury" ? "jury" : "demo";
+  const selfCardId = PERSONA_SELF_CARD[persona];
   const allPlans = useMemo(
-    () => (isDemo ? [...myPlans, ...DEMO_PLANS, ...TEST_PROFILES] : dbMode ? dbPlans : [...myPlans]),
+    () => (isDemo ? [...publicMyPlans, ...DEMO_PLANS, ...TEST_PROFILES] : dbMode ? dbPlans : [...publicMyPlans]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [myPlans, isDemo, dbMode, dbPlans],
   );
   const myPlansList = dbMode ? dbPlans.filter((p) => p.ownerId === uid) : myPlans;
 
   // Incoming requests from the OTHER demo persona (jury ↔ user).
-  const persona: Persona = session?.kind === "jury" ? "jury" : "demo";
   const matchRequests = isDemo ? bus.filter((p) => p.persona !== persona && !dismissedReq.has(p.ts)) : [];
   const visiblePlans = useMemo(
     () =>
       allPlans.filter(
         (p) =>
           !passed.has(p.id) &&
+          p.id !== selfCardId && // hide your own persona card (Alia/Madina)
           (fDate === "any" || p.dateTag === fDate) &&
           (fArea === "any" || p.areaId === fArea) &&
           (fEvent === "any" || p.activityId === fEvent),
       ),
-    [allPlans, passed, fDate, fArea, fEvent],
+    [allPlans, passed, fDate, fArea, fEvent, selfCardId],
   );
 
   if (!ready) return null;
@@ -637,15 +644,15 @@ export default function DemoPage() {
                 <button className="entrybtn jury" onClick={enterJury}>
                   <span className="entryemoji">⚖️</span>
                   <span className="entrytext">
-                    <strong>Jury Access</strong>
-                    <small>Isolated demo — explore everything, no real user data.</small>
+                    <strong>Jury Access — you are Alia, 25</strong>
+                    <small>Isolated demo. Open in a 2nd window as “Explore as User” (Madina) to see a real match.</small>
                   </span>
                 </button>
                 <button className="entrybtn demo" onClick={enterDemoUser}>
                   <span className="entryemoji">🧭</span>
                   <span className="entrytext">
-                    <strong>Explore as User</strong>
-                    <small>Try the main features with a ready demo profile.</small>
+                    <strong>Explore as User — you are Madina, 24</strong>
+                    <small>Alia &amp; Madina like each other, so sending a match between them always matches.</small>
                   </span>
                 </button>
                 <button className="entrybtn" onClick={() => { setEntryScreen("auth"); setAuthMode("signin"); setAuthError(null); }}>
@@ -1383,14 +1390,14 @@ export default function DemoPage() {
 
         {view === "spark" && <SparkView premium={premium} onUnlock={() => setPremium(true)} />}
 
-        {view === "profile" && <ProfileView session={session} demo={isDemo} profile={dbProfile} />}
+        {view === "profile" && <ProfileView session={session} demo={isDemo} persona={isDemo ? persona : null} profile={dbProfile} />}
       </main>
 
       {createOpen && (
         <CreatePlanModal
           author={
             isDemo
-              ? { name: TEST_PROFILE.name, emoji: TEST_PROFILE.emoji, age: TEST_PROFILE.age }
+              ? { name: PERSONA_PROFILES[persona].name, emoji: PERSONA_PROFILES[persona].emoji, age: PERSONA_PROFILES[persona].age }
               : { name: dbProfile?.name || session.name || "You", emoji: "🧑" }
           }
           onClose={() => setCreateOpen(false)}
@@ -1399,18 +1406,21 @@ export default function DemoPage() {
             setCreateTripOpen(true);
           }}
           onPost={async (plan) => {
+            const isInvite = plan.mode === "invite" && !!plan.inviteToken;
             if (dbMode) {
               const saved = await insertPlan(plan);
               if (saved) setDbPlans((prev) => [saved, ...prev]);
             } else {
               setMyPlans((prev) => [plan, ...prev]);
-              postToBus(plan);
+              // Invite plans are private (link-shared) — don't broadcast to the match bus / feed.
+              if (!isInvite) postToBus(plan);
             }
             setCreateOpen(false);
-            setView("plans");
-            if (plan.mode === "invite" && plan.inviteToken) {
-              addNotif({ emoji: "🔗", text: "Invite plan created — open it in My plans to copy the share link.", tone: "match" });
+            if (isInvite) {
+              // Show the shareable link right away instead of posting to the feed.
+              setInviteLinkPlan(plan);
             } else {
+              setView("plans");
               addNotif({ emoji: "✅", text: "Your plan is live. People who fit can now ask to join.", tone: "match" });
             }
           }}
@@ -1432,6 +1442,38 @@ export default function DemoPage() {
             addNotif({ emoji: "✈️", text: "Your trip is live. We’ll match travellers by dates, budget, and style.", tone: "match" });
           }}
         />
+      )}
+
+      {inviteLinkPlan && (
+        <div className="modal-overlay" onClick={() => setInviteLinkPlan(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <div className="modal-head">
+              <h2>Your invite is ready 🔗</h2>
+              <button className="closebtn" onClick={() => setInviteLinkPlan(null)} aria-label="Close">✕</button>
+            </div>
+            <div className="modal-body">
+              <p className="sub">Send this private link to the person you want to meet. It’s not posted to the public feed.</p>
+              <div className="invitebox">
+                🔗 <span>{`${typeof window !== "undefined" ? window.location.origin : ""}/invite/${inviteLinkPlan.inviteToken}`}</span>
+              </div>
+              <div className="note" style={{ marginTop: 14 }}>
+                {activityById(inviteLinkPlan.activityId)?.label} · {inviteLinkPlan.areaLabel ?? areaById(inviteLinkPlan.areaId)?.label} · {inviteLinkPlan.whenLabel}
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="passbtn" onClick={() => { setInviteLinkPlan(null); setView("plans"); }}>
+                Done
+              </button>
+              <button
+                className="continue"
+                style={{ width: "auto", padding: "14px 26px" }}
+                onClick={() => { copyInvite(inviteLinkPlan); }}
+              >
+                Copy link
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {rescheduleFor && (
@@ -1841,10 +1883,11 @@ function SparkView({ premium, onUnlock }: { premium: boolean; onUnlock: () => vo
 
 /* ---------------- Profile ---------------- */
 
-function ProfileView({ session, demo, profile }: { session: typeof TEST_IDENTITY; demo: boolean; profile: DbProfile | null }) {
-  const p = TEST_PROFILE;
+function ProfileView({ session, demo, persona, profile }: { session: typeof TEST_IDENTITY; demo: boolean; persona: Persona | null; profile: DbProfile | null }) {
+  const p = persona ? PERSONA_PROFILES[persona] : TEST_PROFILE;
+  const demoAge = persona ? PERSONA_PROFILES[persona].age : TEST_PROFILE.age;
   const name = (demo ? p.name : profile?.name) || session.name || "You";
-  const emoji = demo ? p.emoji : "🧑";
+  const emoji = demo ? (p as { emoji?: string }).emoji ?? "🧑" : "🧑";
   const city = demo ? p.city : profile?.city ?? "New York";
   const areaId = demo ? p.areaId : profile?.areaId ?? null;
   const bio = demo ? p.bio : profile?.bio || "Add a short bio so people get a feel for you.";
@@ -1862,7 +1905,7 @@ function ProfileView({ session, demo, profile }: { session: typeof TEST_IDENTITY
           <div>
             <h2 className="profilename">
               {name}
-              {demo ? `, ${p.age}` : ""}
+              {demo ? `, ${demoAge}` : ""}
             </h2>
             <div className="pcard-area">
               📍 {city}
