@@ -51,7 +51,7 @@ import {
 import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from "@/lib/demo/matchbus";
 import { SPARK_QUESTIONS } from "@/lib/demo/sparkQuestions";
 import { PERSONA_PROFILES, PERSONA_SELF_CARD } from "@/lib/demo/personas";
-import { getMutualAvailability, proposeMeeting, fetchMeetingProposals, respondMeetingProposal, fetchNotifications, markNotificationsRead, requestTripJoin, fetchTripRequests, respondTripRequest, requestPlanJoin, fetchPlanRequests, respondPlanRequest, type MutualSlot, type MeetingProposal, type DbNotification, type TripRequest, type PlanRequest } from "@/lib/data/store";
+import { getMutualAvailability, proposeMeeting, fetchMeetingProposals, respondMeetingProposal, fetchNotifications, markNotificationsRead, requestTripJoin, fetchTripRequests, respondTripRequest, requestPlanJoin, fetchPlanRequests, respondPlanRequest, cancelPlanRequest, cancelTripRequest, type MutualSlot, type MeetingProposal, type DbNotification, type TripRequest, type PlanRequest } from "@/lib/data/store";
 import { seedMeetings, slotLabel, dateLabel, hourLabel, daysUntil, type Meeting } from "@/lib/demo/meetings";
 import { buildIcs } from "@/lib/calendar/ics";
 
@@ -521,13 +521,17 @@ export default function DemoPage() {
     setView("meetings");
   }
   async function respondPlan(req: PlanRequest, accept: boolean) {
-    await respondPlanRequest(req.id, accept);
+    const res = await respondPlanRequest(req.id, accept);
     if (uid) setPlanReqs(await fetchPlanRequests(uid));
-    addNotif(
-      accept
-        ? { emoji: "🎉", text: "You accepted the join request.", tone: "match" }
-        : { emoji: "🚫", text: "Join request declined.", tone: "pending" },
-    );
+    if (res.error) return showToast(res.error);
+    showToast(accept ? `${reqProfiles[req.fromUser] ?? "They"} is joining your plan! 🎉` : "Request declined.");
+  }
+  async function cancelMyPlanReq(planId: string) {
+    const req = planReqs.find((r) => r.planId === planId && r.fromUser === uid && r.status === "pending");
+    if (!req) return;
+    const res = await cancelPlanRequest(req.id);
+    if (uid) setPlanReqs(await fetchPlanRequests(uid));
+    showToast(res.error ? res.error : "Request cancelled.");
   }
 
   // ---- Meeting agreement actions ----
@@ -615,13 +619,17 @@ export default function DemoPage() {
     addNotif({ emoji: "📨", text: `Request sent to ${trip.name} — waiting for a reply.`, tone: "pending" });
   }
   async function respondTrip(req: TripRequest, accept: boolean) {
-    await respondTripRequest(req.id, accept);
+    const res = await respondTripRequest(req.id, accept);
     if (uid) setTripReqs(await fetchTripRequests(uid));
-    addNotif(
-      accept
-        ? { emoji: "🎉", text: "You accepted the travel request.", tone: "match" }
-        : { emoji: "🚫", text: "Travel request declined.", tone: "pending" },
-    );
+    if (res.error) return showToast(res.error);
+    showToast(accept ? "They’re joining your trip! 🎉" : "Travel request declined.");
+  }
+  async function cancelMyTripReq(tripId: string) {
+    const req = tripReqs.find((r) => r.tripId === tripId && r.fromUser === uid && r.status === "pending");
+    if (!req) return;
+    const res = await cancelTripRequest(req.id);
+    if (uid) setTripReqs(await fetchTripRequests(uid));
+    showToast(res.error ? res.error : "Request cancelled.");
   }
 
   function addFriend(p: Person) {
@@ -777,6 +785,16 @@ export default function DemoPage() {
   // Real plan join-requests: incoming to my plans, and my own outgoing (persisted).
   const incomingPlanReqs = planReqs.filter((r) => r.toUser === uid && r.status === "pending");
   const myPlanRequestIds = new Set(planReqs.filter((r) => r.fromUser === uid).map((r) => r.planId));
+  function myPlanReqStatus(planId: string): "none" | "pending" | "accepted" | "declined" | "cancelled" {
+    if (!dbMode) return requested.has(planId) ? "pending" : "none";
+    const r = planReqs.find((x) => x.fromUser === uid && x.planId === planId);
+    return (r?.status as "pending" | "accepted" | "declined" | "cancelled") ?? "none";
+  }
+  function myTripReqStatus(tripId: string): "none" | "pending" | "accepted" | "declined" | "cancelled" {
+    if (!dbMode) return requested.has(tripId) ? "pending" : "none";
+    const r = tripReqs.find((x) => x.fromUser === uid && x.tripId === tripId);
+    return (r?.status as "pending" | "accepted" | "declined" | "cancelled") ?? "none";
+  }
   function planDestName(id: string): string {
     const p = dbPlans.find((x) => x.id === id);
     return p ? `${activityById(p.activityId)?.label ?? "a plan"} · ${p.areaLabel ?? areaById(p.areaId)?.label ?? ""}` : "your plan";
@@ -1176,7 +1194,8 @@ export default function DemoPage() {
                   plan={p}
                   premium={premium}
                   liked={liked.has(p.id)}
-                  requested={dbMode ? myPlanRequestIds.has(p.id) : requested.has(p.id)}
+                  requestStatus={myPlanReqStatus(p.id)}
+                  onCancel={() => cancelMyPlanReq(p.id)}
                   helperOpen={helperFor === p.id}
                   mine={dbMode ? p.ownerId === uid : myPlans.some((m) => m.id === p.id)}
                   onLike={() => like(p.id)}
@@ -1275,7 +1294,8 @@ export default function DemoPage() {
                   trip={t}
                   viewerTrip={viewerTrip}
                   premium={premium}
-                  requested={dbMode ? myTripRequestIds.has(t.id) : requested.has(t.id)}
+                  requestStatus={myTripReqStatus(t.id)}
+                  onCancel={() => cancelMyTripReq(t.id)}
                   mine={dbMode ? !!t.mine : myTrips.some((m) => m.id === t.id)}
                   onPass={() => setPassed((prev) => new Set(prev).add(t.id))}
                   onJoin={() => joinTrip(t)}
@@ -1601,7 +1621,7 @@ export default function DemoPage() {
                 </div>
               )}
               {myPlansList.map((p) => (
-                <PlanCard key={p.id} plan={p} premium={premium} liked={false} requested mine onLike={() => {}} onPass={() => {}} onJoin={() => {}} helperOpen={false} onToggleHelper={() => {}} onUpgrade={() => {}} onCopyInvite={() => copyInvite(p)} />
+                <PlanCard key={p.id} plan={p} premium={premium} liked={false} requestStatus="none" mine onLike={() => {}} onPass={() => {}} onJoin={() => {}} helperOpen={false} onToggleHelper={() => {}} onUpgrade={() => {}} onCopyInvite={() => copyInvite(p)} />
               ))}
             </div>
           </>
@@ -1969,18 +1989,19 @@ function PlanCard(props: {
   plan: DemoPlan;
   premium: boolean;
   liked: boolean;
-  requested: boolean;
+  requestStatus: "none" | "pending" | "accepted" | "declined" | "cancelled";
   mine: boolean;
   helperOpen: boolean;
   onLike: () => void;
   onPass: () => void;
   onJoin: () => void;
+  onCancel?: () => void;
   onToggleHelper: () => void;
   onUpgrade: () => void;
   onCopyInvite?: () => void;
   onOpenProfile?: () => void;
 }) {
-  const { plan, premium, liked, requested, mine, helperOpen, onLike, onPass, onJoin, onToggleHelper, onUpgrade, onCopyInvite, onOpenProfile } = props;
+  const { plan, premium, requestStatus, mine, helperOpen, onPass, onJoin, onCancel, onToggleHelper, onUpgrade, onCopyInvite, onOpenProfile } = props;
   const activity = activityById(plan.activityId);
   const area = areaById(plan.areaId);
   const clickable = !mine && !!onOpenProfile;
@@ -2030,12 +2051,32 @@ function PlanCard(props: {
 
       {!mine && (
         <div className="pcard-actions" style={{ gridTemplateColumns: "1fr 1.6fr" }}>
-          <button className="passbtn" onClick={onPass}>
-            Not interested
-          </button>
-          <button className="matchbtn" disabled={requested} onClick={onJoin}>
-            {requested ? "Request sent · Pending" : "Request to join"}
-          </button>
+          {requestStatus === "pending" ? (
+            <>
+              <button className="passbtn" onClick={onCancel}>Cancel</button>
+              <button className="matchbtn" disabled>Waiting for approval</button>
+            </>
+          ) : requestStatus === "accepted" ? (
+            <>
+              <button className="passbtn" onClick={onPass}>Hide</button>
+              <button className="matchbtn" disabled style={{ background: "var(--green)" }}>You’re going! 🎉</button>
+            </>
+          ) : requestStatus === "declined" ? (
+            <>
+              <button className="passbtn" onClick={onPass}>Hide</button>
+              <button className="matchbtn" disabled>Request declined</button>
+            </>
+          ) : requestStatus === "cancelled" ? (
+            <>
+              <button className="passbtn" onClick={onPass}>Hide</button>
+              <button className="matchbtn" disabled>Request cancelled</button>
+            </>
+          ) : (
+            <>
+              <button className="passbtn" onClick={onPass}>Not interested</button>
+              <button className="matchbtn" onClick={onJoin}>Request to join</button>
+            </>
+          )}
         </div>
       )}
 
@@ -2581,13 +2622,14 @@ function TripCard(props: {
   trip: DemoTrip;
   viewerTrip: DemoTrip | null;
   premium: boolean;
-  requested: boolean;
+  requestStatus: "none" | "pending" | "accepted" | "declined" | "cancelled";
   mine: boolean;
   onPass: () => void;
   onJoin: () => void;
+  onCancel?: () => void;
   onOpenProfile?: () => void;
 }) {
-  const { trip, viewerTrip, premium, requested, mine, onPass, onJoin, onOpenProfile } = props;
+  const { trip, viewerTrip, premium, requestStatus, mine, onPass, onJoin, onCancel, onOpenProfile } = props;
   const comfort = COMFORTS.find((c) => c.id === trip.comfort);
   const withW = WITH_WHOM.find((w) => w.id === trip.withWhom);
   const clickable = !mine && !!onOpenProfile;
@@ -2650,12 +2692,32 @@ function TripCard(props: {
 
       {!mine && (
         <div className="pcard-actions" style={{ gridTemplateColumns: "1fr 2fr" }}>
-          <button className="passbtn" onClick={onPass}>
-            Pass
-          </button>
-          <button className="matchbtn" disabled={requested} onClick={onJoin}>
-            {requested ? "Request sent · Pending" : "Request to join"}
-          </button>
+          {requestStatus === "pending" ? (
+            <>
+              <button className="passbtn" onClick={onCancel}>Cancel</button>
+              <button className="matchbtn" disabled>Waiting for approval</button>
+            </>
+          ) : requestStatus === "accepted" ? (
+            <>
+              <button className="passbtn" onClick={onPass}>Hide</button>
+              <button className="matchbtn" disabled style={{ background: "var(--green)" }}>You’re going! 🎉</button>
+            </>
+          ) : requestStatus === "declined" ? (
+            <>
+              <button className="passbtn" onClick={onPass}>Hide</button>
+              <button className="matchbtn" disabled>Request declined</button>
+            </>
+          ) : requestStatus === "cancelled" ? (
+            <>
+              <button className="passbtn" onClick={onPass}>Hide</button>
+              <button className="matchbtn" disabled>Request cancelled</button>
+            </>
+          ) : (
+            <>
+              <button className="passbtn" onClick={onPass}>Not interested</button>
+              <button className="matchbtn" onClick={onJoin}>Request to join</button>
+            </>
+          )}
         </div>
       )}
     </article>

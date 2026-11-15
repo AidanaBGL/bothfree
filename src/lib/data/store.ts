@@ -101,11 +101,27 @@ export async function fetchTripRequests(uid: string): Promise<TripRequest[]> {
 }
 
 export async function respondTripRequest(id: string, accept: boolean): Promise<{ error?: string }> {
-  const { error } = await createClient()
+  const { data, error } = await createClient()
     .from("trip_requests")
     .update({ status: accept ? "accepted" : "declined" })
-    .eq("id", id);
-  return error ? { error: error.message } : {};
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: "This request was already handled." };
+  return {};
+}
+
+export async function cancelTripRequest(id: string): Promise<{ error?: string }> {
+  const { data, error } = await createClient()
+    .from("trip_requests")
+    .update({ status: "cancelled" })
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: "This request was already handled." };
+  return {};
 }
 
 // ---- Plan join requests ---------------------------------------------
@@ -141,11 +157,28 @@ export async function fetchPlanRequests(uid: string): Promise<PlanRequest[]> {
 }
 
 export async function respondPlanRequest(id: string, accept: boolean): Promise<{ error?: string }> {
-  const { error } = await createClient()
+  // Only a still-pending request can be resolved; confirm exactly one row changed.
+  const { data, error } = await createClient()
     .from("plan_requests")
     .update({ status: accept ? "accepted" : "declined" })
-    .eq("id", id);
-  return error ? { error: error.message } : {};
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: "This request was already handled." };
+  return {};
+}
+
+export async function cancelPlanRequest(id: string): Promise<{ error?: string }> {
+  const { data, error } = await createClient()
+    .from("plan_requests")
+    .update({ status: "cancelled" })
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: "This request was already handled." };
+  return {};
 }
 
 // ---- Profile --------------------------------------------------------
