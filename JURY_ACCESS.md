@@ -2,14 +2,25 @@
 
 No sign-up needed. On the welcome screen, use one of the two one-tap demo entries.
 
-## Two demo identities (they can match with each other)
+## Two one-tap identities (REAL accounts that sync across devices)
 
-| Button | Signs you in as | From the feed |
+| Button | Signs you in as | Email |
 | --- | --- | --- |
-| **Jury Access** | **Alia, 25** (Manhattan, coffee & books) | the "Alia" card |
-| **Explore as User** | **Madina, 24** (Manhattan, live music) | the "Madina" card |
+| **Jury Access** | **Alia** | `jury@bothfree.app` |
+| **Explore as User** | **Madina** | `demo@bothfree.app` |
 
-Both profiles are set to like each other, so a match between them always works.
+These two buttons now sign into **real Supabase accounts** (created automatically
+the first time), so their actions — plan requests, meetings, notifications —
+really sync between two different browsers/devices and persist after reload.
+
+### One-time setup for the real accounts
+Because they're real accounts, Supabase email settings apply:
+- Easiest: in Supabase → **Authentication → Providers → Email**, turn **“Confirm
+  email” OFF**. Then the two buttons just work (account auto-created on first tap).
+- Or create the two accounts once via **Sign Up** (emails above) and confirm them.
+
+If Supabase isn't reachable, the buttons fall back to a local-only demo persona
+(no cross-device sync).
 
 ## Show a real cross-account match (2 windows)
 1. Open the site in **two browser windows** (e.g. normal + incognito).

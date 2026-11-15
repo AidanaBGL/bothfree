@@ -354,11 +354,45 @@ export default function DemoPage() {
     }
     startSession({ name: TEST_IDENTITY.name, email: email.trim() || TEST_IDENTITY.email, kind: "registered" });
   }
+  // Jury/Demo are backed by REAL fixed Supabase accounts so their actions sync
+  // across devices (notifications, requests, etc.). Falls back to a local-only
+  // persona session if Supabase isn't configured.
+  async function enterPersona(kind: "jury" | "demo") {
+    const prof = PERSONA_PROFILES[kind];
+    const email = kind === "jury" ? "jury@bothfree.app" : "demo@bothfree.app";
+    const password = kind === "jury" ? "bothfree-jury-2026" : "bothfree-demo-2026";
+
+    if (!supabaseConfigured()) {
+      startSession({ name: prof.name, email, kind });
+      return;
+    }
+    setAuthBusy(true);
+    let res = await authSignIn(email, password);
+    if (res.error) {
+      // First time: create the account, then sign in.
+      const up = await authSignUp({ email, password, name: prof.name, dob: "2000-01-01", gender: "prefer_not", lgbtqFriendly: true });
+      if (up.needsVerify) {
+        setAuthBusy(false);
+        showToast("Turn off “Confirm email” in Supabase to use one-tap Jury/Demo, or create these accounts once.");
+        startSession({ name: prof.name, email, kind }); // local fallback so it still opens
+        return;
+      }
+      if (!up.error) res = await authSignIn(email, password);
+    }
+    setAuthBusy(false);
+    if (res.error) {
+      showToast(res.error);
+      startSession({ name: prof.name, email, kind });
+      return;
+    }
+    // Real signed-in account → full DB sync.
+    startSession({ name: res.name ?? prof.name, email, kind: "registered" });
+  }
   function enterJury() {
-    startSession({ name: PERSONA_PROFILES.jury.name, email: "jury@bothfree.app", kind: "jury" });
+    void enterPersona("jury");
   }
   function enterDemoUser() {
-    startSession({ name: PERSONA_PROFILES.demo.name, email: "demo@bothfree.app", kind: "demo" });
+    void enterPersona("demo");
   }
   async function signUp() {
     setAuthError(null);
