@@ -379,13 +379,22 @@ export default function DemoPage() {
       }
       if (!up.error) res = await authSignIn(email, password);
     }
-    setAuthBusy(false);
     if (res.error) {
+      setAuthBusy(false);
       showToast(res.error);
       startSession({ name: prof.name, email, kind });
       return;
     }
-    // Real signed-in account → full DB sync.
+    // Real signed-in account → full DB sync. Seed one starter plan the first
+    // time so the two personas can actually see each other in Discover.
+    const myId = await getUserId();
+    if (myId) {
+      const plans = await fetchPlans();
+      if (!plans.some((p) => p.ownerId === myId)) {
+        await insertPlan(starterPlan(kind, prof.name));
+      }
+    }
+    setAuthBusy(false);
     startSession({ name: res.name ?? prof.name, email, kind: "registered" });
   }
   function enterJury() {
@@ -2265,6 +2274,29 @@ function ProfileView({ session, demo, persona, profile }: { session: typeof TEST
 }
 
 /* ---------------- Create plan modal ---------------- */
+
+/** A starter plan so the Alia/Madina persona accounts aren't empty on first login. */
+function starterPlan(kind: "jury" | "demo", name: string): DemoPlan {
+  const p = PERSONA_PROFILES[kind];
+  const activityId = kind === "jury" ? "coffee" : "music";
+  const areaId = "manhattan";
+  return {
+    id: `starter-${kind}`,
+    name,
+    emoji: p.emoji,
+    age: p.age,
+    activityId,
+    areaId,
+    areaLabel: "Manhattan",
+    dateTag: "weekend",
+    whenLabel: kind === "jury" ? "Sat · 11:00 AM" : "Fri · 8:00 PM",
+    budgetLabel: kind === "jury" ? "Under $20" : "$20–40",
+    note: p.bio,
+    likesYouBack: false,
+    lgbtqFriendly: true,
+    mode: "friendship",
+  };
+}
 
 function notifEmoji(kind: string): string {
   if (kind.startsWith("friend")) return "🤝";
