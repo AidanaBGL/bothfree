@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { MonthCalendar } from "@/components/MonthCalendar";
 import { TimeSlotTable } from "@/components/TimeSlotTable";
-import { AreaMap } from "@/components/AreaMap";
+import { AddressInput } from "@/components/AddressInput";
 import { ACTIVITIES, AREAS, activityById, areaById } from "@/lib/reference/catalog";
 import { buildDateHelper } from "@/lib/dateideas/conversation";
 import { DEMO_PLANS, TEST_PROFILE, BILL_OPTIONS, type DemoPlan, type DateTag } from "@/lib/demo/plans";
@@ -1410,7 +1410,6 @@ function CreatePlanModal({ onClose, onPost, onTravel }: { onClose: () => void; o
   const [groupSize, setGroupSize] = useState(1);
   const [activity, setActivity] = useState("");
   const [area, setArea] = useState("");
-  const [customRing, setCustomRing] = useState<[number, number][] | null>(null);
   const [days, setDays] = useState<string[]>([]);
   const [slots, setSlots] = useState<Record<string, number[]>>({});
   const [budget, setBudget] = useState(40);
@@ -1418,7 +1417,6 @@ function CreatePlanModal({ onClose, onPost, onTravel }: { onClose: () => void; o
   const [note, setNote] = useState("");
 
   const hasSlot = Object.values(slots).some((hrs) => hrs.length > 0);
-  const effectiveArea = customRing ? "custom" : area;
 
   // "Find a new friend" inserts a group-size step right after the mode step.
   const stepKeys = ["mode", ...(mode === "friendship" ? ["groupSize"] : []), "activity", "days", "times", "area", "budget"];
