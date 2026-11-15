@@ -68,6 +68,86 @@ export async function insertTrip(trip: DemoTrip): Promise<DemoTrip | null> {
   return { ...(r.payload as DemoTrip), id: r.id, mine: true };
 }
 
+// ---- Trip join requests ---------------------------------------------
+export interface TripRequest {
+  id: string;
+  tripId: string;
+  fromUser: string;
+  toUser: string;
+  status: "pending" | "accepted" | "declined";
+}
+
+export async function requestTripJoin(tripId: string): Promise<{ error?: string }> {
+  const supabase = createClient();
+  const from = (await supabase.auth.getUser()).data.user?.id;
+  if (!from) return { error: "Not signed in" };
+  const { error } = await supabase.from("trip_requests").insert({ trip_id: tripId, from_user: from });
+  if (error && !/duplicate|unique/i.test(error.message)) return { error: error.message };
+  return {};
+}
+
+export async function fetchTripRequests(uid: string): Promise<TripRequest[]> {
+  const { data } = await createClient()
+    .from("trip_requests")
+    .select("id, trip_id, from_user, to_user, status")
+    .or(`from_user.eq.${uid},to_user.eq.${uid}`);
+  return ((data as Record<string, string>[] | null) ?? []).map((r) => ({
+    id: r.id,
+    tripId: r.trip_id,
+    fromUser: r.from_user,
+    toUser: r.to_user,
+    status: r.status as TripRequest["status"],
+  }));
+}
+
+export async function respondTripRequest(id: string, accept: boolean): Promise<{ error?: string }> {
+  const { error } = await createClient()
+    .from("trip_requests")
+    .update({ status: accept ? "accepted" : "declined" })
+    .eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
+// ---- Plan join requests ---------------------------------------------
+export interface PlanRequest {
+  id: string;
+  planId: string;
+  fromUser: string;
+  toUser: string;
+  status: "pending" | "accepted" | "declined";
+}
+
+export async function requestPlanJoin(planId: string): Promise<{ error?: string }> {
+  const supabase = createClient();
+  const from = (await supabase.auth.getUser()).data.user?.id;
+  if (!from) return { error: "Not signed in" };
+  const { error } = await supabase.from("plan_requests").insert({ plan_id: planId, from_user: from });
+  if (error && !/duplicate|unique/i.test(error.message)) return { error: error.message };
+  return {};
+}
+
+export async function fetchPlanRequests(uid: string): Promise<PlanRequest[]> {
+  const { data } = await createClient()
+    .from("plan_requests")
+    .select("id, plan_id, from_user, to_user, status")
+    .or(`from_user.eq.${uid},to_user.eq.${uid}`);
+  return ((data as Record<string, string>[] | null) ?? []).map((r) => ({
+    id: r.id,
+    planId: r.plan_id,
+    fromUser: r.from_user,
+    toUser: r.to_user,
+    status: r.status as PlanRequest["status"],
+  }));
+}
+
+export async function respondPlanRequest(id: string, accept: boolean): Promise<{ error?: string }> {
+  const { error } = await createClient()
+    .from("plan_requests")
+    .update({ status: accept ? "accepted" : "declined" })
+    .eq("id", id);
+  return error ? { error: error.message } : {};
+}
+
 // ---- Profile --------------------------------------------------------
 export interface DbProfile {
   name: string;
@@ -360,6 +440,25 @@ export async function respondMeetingProposal(id: string, accept: boolean): Promi
     .update({ status: accept ? "accepted" : "declined" })
     .eq("id", id);
   return error ? { error: error.message } : {};
+}
+
+// ---- Invite links ---------------------------------------------------
+function configured(): boolean {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  return Boolean(url && key && !url.includes("YOUR_") && !key.includes("YOUR_"));
+}
+
+/** Resolve a private invite plan by its secret token (keyless via RPC). */
+export async function getInvitePlan(token: string): Promise<DemoPlan | null> {
+  if (!configured()) return null;
+  try {
+    const { data, error } = await createClient().rpc("get_invite_plan", { token });
+    if (error || !data) return null;
+    return data as DemoPlan;
+  } catch {
+    return null;
+  }
 }
 
 // ---- Notifications --------------------------------------------------

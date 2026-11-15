@@ -51,7 +51,7 @@ import {
 import { readBus, pushBus, PERSONAS, BUS_KEY, type BusPost, type Persona } from "@/lib/demo/matchbus";
 import { SPARK_QUESTIONS } from "@/lib/demo/sparkQuestions";
 import { PERSONA_PROFILES, PERSONA_SELF_CARD } from "@/lib/demo/personas";
-import { getMutualAvailability, proposeMeeting, fetchMeetingProposals, respondMeetingProposal, fetchNotifications, markNotificationsRead, type MutualSlot, type MeetingProposal, type DbNotification } from "@/lib/data/store";
+import { getMutualAvailability, proposeMeeting, fetchMeetingProposals, respondMeetingProposal, fetchNotifications, markNotificationsRead, requestTripJoin, fetchTripRequests, respondTripRequest, requestPlanJoin, fetchPlanRequests, respondPlanRequest, type MutualSlot, type MeetingProposal, type DbNotification, type TripRequest, type PlanRequest } from "@/lib/data/store";
 import { seedMeetings, slotLabel, dateLabel, hourLabel, daysUntil, type Meeting } from "@/lib/demo/meetings";
 import { buildIcs } from "@/lib/calendar/ics";
 
@@ -160,6 +160,9 @@ export default function DemoPage() {
   const [rescheduleFor, setRescheduleFor] = useState<Meeting | null>(null);
   const [dbProposals, setDbProposals] = useState<MeetingProposal[]>([]);
   const [dbNotifs, setDbNotifs] = useState<DbNotification[]>([]);
+  const [tripReqs, setTripReqs] = useState<TripRequest[]>([]);
+  const [planReqs, setPlanReqs] = useState<PlanRequest[]>([]);
+  const [reqProfiles, setReqProfiles] = useState<Record<string, string>>({});
 
   // Create modals
   const [createOpen, setCreateOpen] = useState(false);
@@ -216,6 +219,8 @@ export default function DemoPage() {
       setDbProfile(null);
       setDbNotifs([]);
       setDbProposals([]);
+      setTripReqs([]);
+      setPlanReqs([]);
       setUid(null);
       return;
     }
@@ -270,11 +275,34 @@ export default function DemoPage() {
       subscribeTable("notifications", () => {
         fetchNotifications(uid).then(setDbNotifs);
       }),
+      subscribeTable("trip_requests", () => {
+        fetchTripRequests(uid).then(setTripReqs);
+      }),
+      subscribeTable("plan_requests", () => {
+        fetchPlanRequests(uid).then(setPlanReqs);
+      }),
     ];
     fetchMeetingProposals(uid).then(setDbProposals);
     fetchNotifications(uid).then(setDbNotifs);
+    fetchTripRequests(uid).then(setTripReqs);
+    fetchPlanRequests(uid).then(setPlanReqs);
     return () => unsubs.forEach((u) => u());
   }, [session?.kind, uid]);
+
+  // Resolve display names for people who requested to join my plans.
+  useEffect(() => {
+    const ids = Array.from(new Set(planReqs.map((r) => r.fromUser))).filter((id) => id !== uid && !reqProfiles[id]);
+    if (ids.length === 0) return;
+    (async () => {
+      const add: Record<string, string> = {};
+      await Promise.all(ids.map(async (id) => {
+        const p = await fetchProfileById(id);
+        if (p) add[id] = p.name;
+      }));
+      if (Object.keys(add).length) setReqProfiles((prev) => ({ ...prev, ...add }));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planReqs, uid]);
 
   // Load DB conversations when opening Messages, and live-refresh on new messages.
   useEffect(() => {
@@ -407,9 +435,26 @@ export default function DemoPage() {
     navigator.clipboard?.writeText(url).catch(() => {});
     addNotif({ emoji: "🔗", text: `Invite link copied: ${url}`, tone: "match" });
   }
-  function joinPlan(plan: DemoPlan) {
+  async function joinPlan(plan: DemoPlan) {
     setRequested((prev) => new Set(prev).add(plan.id));
-    // Turn the "I'm in" into a concrete meeting proposal that must be confirmed.
+
+    // Registered accounts: create a REAL join request the plan owner receives.
+    if (dbMode) {
+      const res = await requestPlanJoin(plan.id);
+      if (res.error) {
+        setRequested((prev) => {
+          const n = new Set(prev);
+          n.delete(plan.id);
+          return n;
+        });
+        return showToast(res.error);
+      }
+      if (uid) setPlanReqs(await fetchPlanRequests(uid));
+      addNotif({ emoji: "📨", text: `Request sent to ${plan.name} — waiting for a reply.`, tone: "pending" });
+      return;
+    }
+
+    // Demo/jury: local-only meeting proposal (seeded counterpart may auto-confirm).
     const parsed = parsePlanSlot(plan);
     const meeting: Meeting = {
       id: `mtg-${Date.now()}`,
@@ -423,8 +468,6 @@ export default function DemoPage() {
       proposedBy: "you",
     };
     setMeetings((prev) => [meeting, ...prev]);
-    // Only the seeded jury/demo counterpart auto-confirms — never for a real
-    // account (a real meeting requires the other person to actually confirm).
     if (isDemo && plan.likesYouBack) {
       setTimeout(() => {
         setMeetings((prev) => prev.map((m) => (m.id === meeting.id ? { ...m, status: "confirmed" } : m)));
@@ -433,6 +476,15 @@ export default function DemoPage() {
     }
     addNotif({ emoji: "📨", text: `Request sent to ${plan.name} — waiting for a reply.`, tone: "pending" });
     setView("meetings");
+  }
+  async function respondPlan(req: PlanRequest, accept: boolean) {
+    await respondPlanRequest(req.id, accept);
+    if (uid) setPlanReqs(await fetchPlanRequests(uid));
+    addNotif(
+      accept
+        ? { emoji: "🎉", text: "You accepted the join request.", tone: "match" }
+        : { emoji: "🚫", text: "Join request declined.", tone: "pending" },
+    );
   }
 
   // ---- Meeting agreement actions ----
@@ -501,13 +553,32 @@ export default function DemoPage() {
     URL.revokeObjectURL(url);
   }
 
-  function joinTrip(trip: DemoTrip) {
+  async function joinTrip(trip: DemoTrip) {
     setRequested((prev) => new Set(prev).add(trip.id));
-    if (trip.likesYouBack) {
-      addNotif({ emoji: trip.emoji, text: `It’s a match! ${trip.name} wants to travel to ${trip.destination.split(",")[0]} too ✈️`, tone: "match" });
-    } else {
-      addNotif({ emoji: "📨", text: `Travel request sent to ${trip.name}. We’ll let you know if they’re in.`, tone: "pending" });
+    if (dbMode) {
+      const res = await requestTripJoin(trip.id);
+      if (res.error) {
+        setRequested((prev) => {
+          const n = new Set(prev);
+          n.delete(trip.id);
+          return n;
+        });
+        return showToast(res.error);
+      }
+      if (uid) setTripReqs(await fetchTripRequests(uid));
+      addNotif({ emoji: "✈️", text: `Request sent to ${trip.name} — waiting for a reply.`, tone: "pending" });
+      return;
     }
+    addNotif({ emoji: "📨", text: `Request sent to ${trip.name} — waiting for a reply.`, tone: "pending" });
+  }
+  async function respondTrip(req: TripRequest, accept: boolean) {
+    await respondTripRequest(req.id, accept);
+    if (uid) setTripReqs(await fetchTripRequests(uid));
+    addNotif(
+      accept
+        ? { emoji: "🎉", text: "You accepted the travel request.", tone: "match" }
+        : { emoji: "🚫", text: "Travel request declined.", tone: "pending" },
+    );
   }
 
   function addFriend(p: Person) {
@@ -639,6 +710,12 @@ export default function DemoPage() {
     [allTrips, passed, tDest, tStyle, tWith],
   );
   const tripDestinations = useMemo(() => Array.from(new Set(DEMO_TRIPS.map((t) => t.destination))), []);
+  // Real trip join-requests: incoming to my trips, and my own outgoing (persisted).
+  const incomingTripReqs = tripReqs.filter((r) => r.toUser === uid && r.status === "pending");
+  const myTripRequestIds = new Set(tripReqs.filter((r) => r.fromUser === uid).map((r) => r.tripId));
+  function tripName(id: string): string {
+    return allTrips.find((t) => t.id === id)?.destination.split(",")[0] ?? "a trip";
+  }
 
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0);
   // Registered accounts show real DB notifications; demo shows the local feed.
@@ -654,6 +731,13 @@ export default function DemoPage() {
     [myPlans, isDemo, dbMode, dbPlans],
   );
   const myPlansList = dbMode ? dbPlans.filter((p) => p.ownerId === uid) : myPlans;
+  // Real plan join-requests: incoming to my plans, and my own outgoing (persisted).
+  const incomingPlanReqs = planReqs.filter((r) => r.toUser === uid && r.status === "pending");
+  const myPlanRequestIds = new Set(planReqs.filter((r) => r.fromUser === uid).map((r) => r.planId));
+  function planDestName(id: string): string {
+    const p = dbPlans.find((x) => x.id === id);
+    return p ? `${activityById(p.activityId)?.label ?? "a plan"} · ${p.areaLabel ?? areaById(p.areaId)?.label ?? ""}` : "your plan";
+  }
 
   // Incoming requests from the OTHER demo persona (jury ↔ user).
   const matchRequests = isDemo ? bus.filter((p) => p.persona !== persona && !dismissedReq.has(p.ts)) : [];
@@ -881,7 +965,6 @@ export default function DemoPage() {
             ["friends", "🤝", "Friends"],
             ["messages", "💬", "Messages"],
             ["meetings", "📅", "Meetings"],
-            ["availability", "🕒", "My free time"],
             ["spark", "✨", "Spark"],
             ["plans", "🗂️", "My plans"],
             ["profile", "🧑", "Profile"],
@@ -889,7 +972,9 @@ export default function DemoPage() {
             <button key={v} className={`navitem${view === v ? " active" : ""}`} onClick={() => setView(v)}>
               <span className="navicon">{icon}</span>
               {label}
-              {v === "plans" && myPlansList.length > 0 && <span className="navbadge">{myPlansList.length}</span>}
+              {v === "plans" && (dbMode ? incomingPlanReqs.length : myPlansList.length) > 0 && (
+                <span className="navbadge">{dbMode ? incomingPlanReqs.length : myPlansList.length}</span>
+              )}
               {v === "friends" && (dbMode ? friendRows.filter((r) => r.status === "pending" && r.to_user === uid).length : incoming.length) > 0 && (
                 <span className="navbadge">{dbMode ? friendRows.filter((r) => r.status === "pending" && r.to_user === uid).length : incoming.length}</span>
               )}
@@ -1048,7 +1133,7 @@ export default function DemoPage() {
                   plan={p}
                   premium={premium}
                   liked={liked.has(p.id)}
-                  requested={requested.has(p.id)}
+                  requested={dbMode ? myPlanRequestIds.has(p.id) : requested.has(p.id)}
                   helperOpen={helperFor === p.id}
                   mine={dbMode ? p.ownerId === uid : myPlans.some((m) => m.id === p.id)}
                   onLike={() => like(p.id)}
@@ -1082,6 +1167,25 @@ export default function DemoPage() {
             {viewerTrip && (
               <div className="tripbanner">
                 🧭 Matching against your trip: <b>{viewerTrip.destination.split(",")[0]}</b> · {tripDatesLabel(viewerTrip)} · {tripBudgetLabel(viewerTrip.budgetMinCents, viewerTrip.budgetMaxCents)}
+              </div>
+            )}
+
+            {dbMode && incomingTripReqs.length > 0 && (
+              <div className="matchreqs">
+                <div className="sectionlabel" style={{ marginTop: 0 }}>✈️ Requests to join your trips</div>
+                {incomingTripReqs.map((r) => (
+                  <div className="frow" key={r.id}>
+                    <div className="avatar">🧑</div>
+                    <div className="frow-id">
+                      <strong>Someone wants to join</strong>
+                      <span className="frow-blurb">Trip to {tripName(r.tripId)}</span>
+                    </div>
+                    <div className="frow-actions">
+                      <button className="passbtn" onClick={() => respondTrip(r, false)}>Decline</button>
+                      <button className="matchbtn" onClick={() => respondTrip(r, true)}>Accept</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -1128,7 +1232,7 @@ export default function DemoPage() {
                   trip={t}
                   viewerTrip={viewerTrip}
                   premium={premium}
-                  requested={requested.has(t.id)}
+                  requested={dbMode ? myTripRequestIds.has(t.id) : requested.has(t.id)}
                   mine={dbMode ? !!t.mine : myTrips.some((m) => m.id === t.id)}
                   onPass={() => setPassed((prev) => new Set(prev).add(t.id))}
                   onJoin={() => joinTrip(t)}
@@ -1411,6 +1515,37 @@ export default function DemoPage() {
                 <span className="plus">+</span> New plan
               </button>
             </div>
+
+            {dbMode && incomingPlanReqs.length > 0 && (
+              <div className="matchreqs">
+                <div className="sectionlabel" style={{ marginTop: 0 }}>🙋 Requests to join your plans</div>
+                {incomingPlanReqs.map((r) => (
+                  <div className="frow" key={r.id}>
+                    <button
+                      className="avatar clickable"
+                      style={{ border: "none", cursor: "pointer" }}
+                      onClick={() => setOpenProfile({ id: r.fromUser })}
+                      aria-label="Open profile"
+                    >
+                      🧑
+                    </button>
+                    <div className="frow-id">
+                      <strong>
+                        <button className="namelink" onClick={() => setOpenProfile({ id: r.fromUser })}>
+                          {reqProfiles[r.fromUser] ?? "BothFree member"}
+                        </button>
+                      </strong>
+                      <span className="frow-blurb">wants to join: {planDestName(r.planId)}</span>
+                    </div>
+                    <div className="frow-actions">
+                      <button className="passbtn" onClick={() => respondPlan(r, false)}>Decline</button>
+                      <button className="matchbtn" onClick={() => respondPlan(r, true)}>Accept</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="feed">
               {myPlansList.length === 0 && (
                 <div className="emptybox">
@@ -1428,8 +1563,6 @@ export default function DemoPage() {
             </div>
           </>
         )}
-
-
 
         {view === "meetings" && (
           <>
@@ -1769,73 +1902,6 @@ function ProfileModal({
                     ))}
                   </div>
                 </>
-              )}
-              {false && dbMode && rel === "friends" && profileId && (
-                <div className="mutualbox">
-                  <div className="sectionlabel" style={{ marginTop: 6 }}>Plan a meeting</div>
-                  {mutual === null ? (
-                    <button
-                      className="matchbtn"
-                      disabled={mutualLoading}
-                      onClick={async () => {
-                        setMutualLoading(true);
-                        setMutualErr(false);
-                        try {
-                          setMutual(await getMutualAvailability(profileId));
-                        } catch {
-                          setMutualErr(true);
-                        }
-                        setMutualLoading(false);
-                      }}
-                    >
-                      {mutualLoading ? "Finding…" : "🕒 Find time you’re both free"}
-                    </button>
-                  ) : mutualErr ? (
-                    <div className="note">
-                      Couldn’t load times. <button className="linkbtn" onClick={() => setMutual(null)}>Try again</button>
-                    </div>
-                  ) : mutual.length === 0 ? (
-                    <div className="note">No shared free time yet. Ask them to add hours, or add more of your own in “My free time”.</div>
-                  ) : (
-                    <>
-                      <div className="mutualtitle">✨ You both have time! Pick one:</div>
-                      {mutual.map((m, i) => (
-                        <button key={i} className={`mutualcard${chosen === i ? " sel" : ""}${i === 0 ? " best" : ""}`} onClick={() => setChosen(i)}>
-                          {i === 0 && <span className="besttag">Best fit</span>}
-                          <strong>{mutualDateLabel(m.startsAt)}</strong>
-                          <span>{mutualTimeLabel(m.startsAt)} – {mutualTimeLabel(m.endsAt)} · {Math.round(m.minutes / 60 * 10) / 10}h together</span>
-                        </button>
-                      ))}
-                      {chosen !== null && (
-                        <div className="proposeform">
-                          <div className="pickrow">
-                            {["Coffee", "Walk", "Food", "Other"].map((a) => (
-                              <button key={a} className={`chip${mActivity === a ? " sel" : ""}`} onClick={() => setMActivity(a)}>{a}</button>
-                            ))}
-                          </div>
-                          <input className="custominput" placeholder="Where? (place or address)" value={mPlace} onChange={(e) => setMPlace(e.target.value)} />
-                          <button
-                            className="continue"
-                            disabled={proposing}
-                            onClick={async () => {
-                              setProposing(true);
-                              const slot = mutual[chosen];
-                              const res = await proposeMeeting({ toUser: profileId, startsAt: slot.startsAt, endsAt: slot.endsAt, activity: mActivity || undefined, place: mPlace || undefined });
-                              setProposing(false);
-                              if (res.error) return;
-                              onProposed(name);
-                            }}
-                          >
-                            {proposing ? "Sending…" : "Propose this meeting →"}
-                          </button>
-                        </div>
-                      )}
-                      <div className="note" style={{ marginTop: 10 }}>
-                        🔒 We only show shared free time. Your full schedule stays private.
-                      </div>
-                    </>
-                  )}
-                </div>
               )}
               <div className="note" style={{ marginTop: 18 }}>
                 Private info (email, exact schedule, friends list) is never shown here.

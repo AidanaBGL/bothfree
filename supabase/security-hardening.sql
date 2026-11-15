@@ -25,9 +25,18 @@ create policy "own private write" on public.account_private
   for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Migrate any existing PII, then drop the columns from the public table.
-insert into public.account_private (user_id, email, date_of_birth, gender)
-select id, email, date_of_birth, gender from public.profiles
-on conflict (user_id) do nothing;
+-- Guarded so the script is safe to re-run after the columns are already gone.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'email'
+  ) then
+    insert into public.account_private (user_id, email, date_of_birth, gender)
+    select id, email, date_of_birth, gender from public.profiles
+    on conflict (user_id) do nothing;
+  end if;
+end $$;
 
 alter table public.profiles drop column if exists email;
 alter table public.profiles drop column if exists date_of_birth;
